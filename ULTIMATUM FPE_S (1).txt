@@ -1,0 +1,3309 @@
+local U = {}
+
+U.Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+U.Players = game:GetService("Players")
+U.RunService = game:GetService("RunService")
+U.UIS = game:GetService("UserInputService")
+U.Stats = game:GetService("Stats")
+U.RS = game:GetService("ReplicatedStorage")
+U.RF = game:GetService("ReplicatedFirst")
+U.Lighting = game:GetService("Lighting")
+U.GroupService = game:GetService("GroupService")
+U.LP = U.Players.LocalPlayer
+U.GROUP_ID = 34080336
+
+U.Config = {
+    ESP = {
+        enabled = false, showPlayers = true, showNPCs = false,
+        showHealth = true, showDistance = true, showNames = true,
+        teamCheck = false, maxDistance = 1000,
+        playerColor = Color3.fromRGB(0, 170, 255),
+        npcColor = Color3.fromRGB(200, 200, 200),
+        aliceColor = Color3.fromRGB(180, 0, 255),
+        enemyColor = Color3.fromRGB(255, 60, 60),
+        fillTransparency = 0.5, outlineTransparency = 0,
+        updateInterval = 0.25,
+    },
+    TeacherIndicator = {
+        enabled = false, radius = 220, iconSize = 56,
+        scaleByDistance = true, showVisibility = true, showDistance = true,
+    },
+    EnrageHud = { enabled = false },
+    Fullbright = { enabled = false, brightness = 3, clockTime = 12, ambient = Color3.fromRGB(180, 180, 180) },
+    FOV = { enabled = false, value = 70, forceEnabled = true },
+    ThirdPerson = { enabled = false, minZoom = 0.5, maxZoom = 15, forceEnabled = true },
+    SmartSpeed = {
+        enabled = false, walkBonus = 1.05, runBonus = 1.10,
+        proximityBonus = 0.15, approachBonus = 0.10, sprintBonus = 0.08, threatBonus = 0.12,
+        detectRange = 80, closeRange = 15, mediumRange = 30,
+        maxWalkSpeed = 28, maxRunSpeed = 40, smoothStep = 4,
+        skipIfTeacher = true,
+    },
+    AutoBlock = {
+        enabled = false, cooldown = 0.08, radius = 38, radiusY = 14,
+        checkFacing = true, facingDot = 0.0,
+        chargeMode = "start", chargeDelay = 0.05,
+        wallCheck = true,
+    },
+    InfStamina = { enabled = false },
+    Notebook = { enabled = false },
+    Aim = {
+        enabled = false, fov = 180, maxDistance = 1000, aimPart = "Head",
+        visibleCheck = true, teamCheck = false, usePrediction = true,
+        lockOnShoot = true, snapStrength = 1, onlyWhenAiming = true,
+    },
+    AntiStun = { enabled = false },
+    Hitbox = {
+        enabled = false, size = 15, transparency = 0.5,
+        color = Color3.fromRGB(255, 0, 0), teamCheck = false, canCollide = false,
+    },
+    VelocityHitbox = {
+        enabled = false, mode = "Forward", range = 30, speed = 65, duration = 0.18,
+        shake = 6, cooldown = 0.55, stopDist = 6, maxTravel = 25,
+        manualKey = Enum.KeyCode.V, autoOnSwing = true, useLinearVelocity = true,
+        fov = 160, hideSelf = true,
+    },
+    DoorNoclip = { enabled = false, rescanInterval = 3 },
+    AliceBarrierNoclip = { enabled = false },
+    Animations = { currentId = "", keybind = Enum.KeyCode.G, loop = false, speed = 1 },
+    NoCircleEnrage = { enabled = false },
+    AntiProj = {
+        enabled = false, unloaded = false, autoDodge = false, dodgeDistance = 14,
+        dodgeCooldown = 0.15, dodgeTime = 1.2, hitRadius = 6, perpendicularOnly = true,
+    },
+    ThavelAimbot = {
+        enabled = false, unloaded = false, aimbot = false, predictor = false,
+        showTrajectory = false, showHitbox = false, aimSmoothness = 1,
+        maxDistance = 200, aimVisibleCheck = true,
+        aimTargetPart = "HumanoidRootPart",
+        trajectoryColor = Color3.fromRGB(255, 50, 50),
+        hitboxColor = Color3.fromRGB(255, 200, 0),
+        autoAimOnPounce = false, hookEnabled = false,
+    },
+    M1Aim = {
+        enabled = false, maxDistance = 30, wallCheck = true, snap = true,
+        aimPart = "HumanoidRootPart", onlyWhileM1 = true,
+    },
+    Panic = {
+        enabled = false, message = "Panic leave triggered",
+        ranks = { [255]=true, [254]=true, [253]=true, [252]=true, [251]=true, [250]=true },
+    },
+}
+
+U.State = {
+    espData = {}, npcData = {},
+    hitboxLoopConn = nil, currentTrack = nil, animPlaying = false,
+    animTrackStoppedConn = nil,
+    lastBlock = 0, blockCount = 0, stunResets = 0,
+    smartSpeed = {
+        currentSpeed = 16, targetSpeed = 16, baseWalk = 16, baseRun = 26, reverts = 0,
+        lastPos = nil, lastCheckTime = 0, lastBase = 16, threatMode = false,
+    },
+    aimTarget = nil, aimTargetPart = nil, aimVelocityCache = {},
+    hooks = {}, animHooks = {}, chargeTimers = {},
+    highlighted = 0, notebookHooked = nil,
+    fullbrightSaved = nil, fovSaved = nil, cameraSaved = nil,
+    fovConn = nil, cameraConn = nil,
+    autoBlockFolderConns = {}, autoBlockDescConns = {}, staminaConns = {},
+    devCache = {}, panicCache = {},
+    doorNoclip = { original = {}, hooked = {}, connections = {}, lastScan = 0, doorCount = 0 },
+    aliceBarrier = { connections = {}, hooked = {}, lastScan = 0, touched = {} },
+    espScan = 0, espUpdate = 0, smartSpeedTick = 0,
+    noCircleEnrage = { conns = {}, savedCC = {} },
+    antiProj = {
+        enabled = false, unloaded = false, projectiles = {}, lastDodge = 0, dodgeCount = 0,
+        dodgedIds = {}, connections = {},
+    },
+    showAllSkins = { enabled = false, thread = nil },
+    thavel = {
+        trajectoryParts = {}, hitboxParts = {}, aimTarget = nil,
+        connections = {}, originalNamecall = nil,
+        hookInstalled = false, lastTrajectoryUpdate = 0,
+    },
+    m1Aim = { conn = nil, inputConn = nil, lastTurn = 0, target = nil },
+    teacherIndicator = {
+        enabled = false, gui = nil, indicators = {}, conn = nil,
+        radius = 220, iconSize = 56,
+    },
+    enrageHud = {
+        enabled = false, gui = nil,
+        frame = nil, label = nil, lastEnraged = false,
+        watcherThread = nil,
+    },
+    vh = {
+        running = false, currentLunge = nil, lastSwingTime = 0, swingFired = false,
+        inputConn = nil, heartbeatConn = nil, mouseConn = nil,
+        hiddenParts = {},
+    },
+}
+
+U.DevRanks = {
+    [255]={name="Founder",color=Color3.fromRGB(255,215,0)},
+    [254]={name="Game Director",color=Color3.fromRGB(255,215,0)},
+    [253]={name="Lead Scripter",color=Color3.fromRGB(255,140,0)},
+    [252]={name="Developer",color=Color3.fromRGB(255,140,0)},
+    [251]={name="Manager",color=Color3.fromRGB(255,100,0)},
+    [250]={name="Admin",color=Color3.fromRGB(255,80,80)},
+    [249]={name="Moderator",color=Color3.fromRGB(255,80,80)},
+    [248]={name="Junior Moderator",color=Color3.fromRGB(200,100,255)},
+    [247]={name="Trial Moderator",color=Color3.fromRGB(150,100,255)},
+    [246]={name="Contributor",color=Color3.fromRGB(100,150,255)},
+    [245]={name="Community Contributor",color=Color3.fromRGB(100,200,255)},
+    [244]={name="Soundtrack Creator",color=Color3.fromRGB(100,255,200)},
+    [243]={name="Voice Actor",color=Color3.fromRGB(150,255,150)},
+    [242]={name="TD Maker",color=Color3.fromRGB(200,255,100)},
+    [241]={name="Tester",color=Color3.fromRGB(255,255,100)},
+    [240]={name="Special",color=Color3.fromRGB(255,200,100)},
+    [239]={name="Friends",color=Color3.fromRGB(200,200,200)},
+}
+
+U.SpecialPlayers = { ["7566829904"] = "Script Creator" }
+
+U.TeacherTextures = {
+    Thavel = "rbxassetid://129083976138852",
+    Circle = "rbxassetid://17592848087",
+    Bloomie = "rbxassetid://112450255707314",
+    Alice = "rbxassetid://112819968067448",
+    AlicePhase2 = "rbxassetid://112819968067448",
+}
+
+U.Answers = {
+    Circle = {
+        ["What is 2 - 3?"]="-1", ["What is 7 x 8?"]="56",
+        ["What is 9 + 10?"]="19", ["What is 10 / 100?"]="0.1",
+        ["What is 10 / 10?"]="true", ["What is π?"]="3.14159",
+        ["Choose the correct option"]="Oreo",
+    },
+    Thavel = {
+        ["What is Brazil's official language?"]="Portuguese",
+        ["Which language has the most native speakers in the world?"]="Mandarin",
+        ["What is Money called in Spanish?"]="Dinero",
+        ["What is an example of a Metaphor?"]="This test was a piece of cake!",
+    },
+    Bloomie = {
+        ["What is the powerhouse of a cell?"]="Mitochondria",
+        ["What is when a tadpole transforms into a frog?"]="Metamorphosis",
+        ["All living things are made up of cells"]="True",
+        ["What is when a plant uses sunlight to grow?"]="Photosynthesis",
+        ["What is the largest mammal on Earth?"]="Blue Whale",
+        ["Which isn't a characteristic of life?"]="Sentience",
+        ["Which symbol represents silver?"]="Ag",
+        ["At what temperature does water freeze (In Fahrenheit)?"]="32",
+    },
+    Emily = {
+        ["Who was the 1st president of the United States?"]="George W",
+        ["Which era marked a switch from agricultural practices to industrial practices?"]="Industrial Revolution",
+        ["What ended in 1985?"]="oreo",
+        ["When was Hersheys founded?"]="1894",
+        ["When did World War 1 start?"]="1914",
+    },
+    Sasha = {
+        ["Which colors make up Orange?"]="Yellow & Red",
+        ["Which one of the following is a primary color?"]="Blue",
+        ["What is the drawing technique that creates the illusion of depth on a flat surface?"]="Perspective",
+        ["What is the complimentary color to Purple?"]="Yellow",
+    },
+    Demi = {
+        ["Which of the following is not a note in the musical scale?"]="H",
+        ["A Treble clef is used for illustrating notes that are:"]="Higher",
+        ["A staff consists of how many horizontal lines?"]="Five",
+        ["How many notes are in the scale?"]="Eight",
+        ["Which of the following markings would affect the length of a note?"]="Dot",
+    },
+}
+
+U.AttackAnimIds = {}
+pcall(function()
+    local Animations = require(U.RS.Shared.Animations)
+    local function collect(node, path)
+        if typeof(node) ~= "table" then return end
+        for k, v in pairs(node) do
+            if typeof(v) == "string" and (k == "Swing1" or k == "Swing2" or k:lower():find("attack")) then
+                U.AttackAnimIds[v] = path .. "." .. tostring(k)
+            elseif typeof(v) == "table" then
+                collect(v, path .. "." .. tostring(k))
+            end
+        end
+    end
+    pcall(function() collect(Animations.Teacher, "Teacher") end)
+end)
+
+U.getCamera = function() return workspace.CurrentCamera end
+U.getChar = function() return U.LP.Character end
+U.getHum = function()
+    local c = U.getChar()
+    return c and c:FindFirstChildOfClass("Humanoid")
+end
+U.getRoot = function()
+    local c = U.getChar()
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+U.getTeam = function(p) return p.Team and p.Team.Name or "None" end
+U.isAlive = function(p)
+    if not p or not p.Character then return false end
+    local h = p.Character:FindFirstChildOfClass("Humanoid")
+    return h and h.Health > 0
+end
+U.getPing = function()
+    local ok, ping = pcall(function()
+        return U.Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
+    end)
+    return ok and ping or 0.05
+end
+U.getOurTeamName = function()
+    local char = U.getChar()
+    if not char then return nil end
+    if workspace:FindFirstChild("Students") and char:IsDescendantOf(workspace.Students) then return "Students" end
+    if workspace:FindFirstChild("Alices") and char:IsDescendantOf(workspace.Alices) then return "Alices" end
+    if workspace:FindFirstChild("Teachers") and char:IsDescendantOf(workspace.Teachers) then return "Teachers" end
+    local tn = char:GetAttribute("TeacherName")
+    if tn == "Alice" or tn == "AlicePhase2" then return "Alices" end
+    if tn and tn ~= "" then return "Teachers" end
+    return "Students"
+end
+U.isOurTeacher = function()
+    local char = U.getChar()
+    if not char then return false end
+    local tn = char:GetAttribute("TeacherName")
+    return tn and tn ~= ""
+end
+U.getEnemyFolders = function()
+    local myTeam = U.getOurTeamName()
+    local out = {}
+    if myTeam == "Students" then
+        table.insert(out, workspace:FindFirstChild("Teachers"))
+        table.insert(out, workspace:FindFirstChild("Alices"))
+    elseif myTeam == "Teachers" then
+        table.insert(out, workspace:FindFirstChild("Students"))
+        table.insert(out, workspace:FindFirstChild("Alices"))
+    elseif myTeam == "Alices" then
+        table.insert(out, workspace:FindFirstChild("Students"))
+        table.insert(out, workspace:FindFirstChild("Teachers"))
+    end
+    local filtered = {}
+    for _, f in ipairs(out) do if f then table.insert(filtered, f) end end
+    return filtered
+end
+U.getTeacherAimFolders = function()
+    local out = {}
+    local s = workspace:FindFirstChild("Students")
+    local a = workspace:FindFirstChild("Alices")
+    if s then table.insert(out, s) end
+    if a then table.insert(out, a) end
+    return out
+end
+U.getGroupRank = function(plr)
+    if not plr then return nil end
+    local ok, result = pcall(function()
+        return U.GroupService:GetRolesInGroupAsync(plr.UserId, U.GROUP_ID)
+    end)
+    if not ok or not result or not result.IsMember then return nil end
+    local highest, highestName = 0, nil
+    for _, role in ipairs(result.Roles) do
+        if role.Rank > highest then highest = role.Rank; highestName = role.Name end
+    end
+    if highest > 0 then return highest, highestName end
+    return nil
+end
+U.getDevInfo = function(plr)
+    if not plr then return nil end
+    if U.State.devCache[plr] ~= nil then return U.State.devCache[plr] or nil end
+    local rank, roleName = U.getGroupRank(plr)
+    if not rank then U.State.devCache[plr] = false; return nil end
+    local info = U.DevRanks[rank] or {rank=rank,name=roleName or "Member",color=Color3.fromRGB(100,100,255)}
+    U.State.devCache[plr] = info
+    return info
+end
+U.checkPanicLeave = function(plr)
+    if not U.Config.Panic.enabled then return end
+    if plr == U.LP then return end
+    if U.State.panicCache[plr] ~= nil then
+        if U.State.panicCache[plr] then U.LP:Kick(U.Config.Panic.message) end
+        return
+    end
+    local rank = U.getGroupRank(plr)
+    local should = rank ~= nil and U.Config.Panic.ranks[rank] == true
+    U.State.panicCache[plr] = should
+    if should then U.LP:Kick(U.Config.Panic.message) end
+end
+U.getColorForPlayer = function(p)
+    local char = p.Character
+    local tn = char and char:GetAttribute("TeacherName")
+    if tn == "Alice" or tn == "AlicePhase2" then return Color3.fromRGB(180,0,255) end
+    if tn and tn ~= "" then return Color3.fromRGB(255,60,60) end
+    local dev = U.getDevInfo(p)
+    if dev then return dev.color end
+    if U.SpecialPlayers[tostring(p.UserId)] then return Color3.fromRGB(0,255,200) end
+    if U.Config.ESP.teamCheck then
+        if U.getTeam(U.LP) == U.getTeam(p) then return U.Config.ESP.playerColor
+        else return U.Config.ESP.enemyColor end
+    end
+    if p:GetAttribute("HasVIP") then return Color3.fromRGB(255,220,0) end
+    return U.Config.ESP.playerColor
+end
+U.destroyAllESPObjects = function(target)
+    if not target then return end
+    for _, d in ipairs(target:GetDescendants()) do
+        if d.Name == "Ultimatum_ESP_HL" or d.Name == "Ultimatum_ESP_BB" then
+            pcall(function() d:Destroy() end)
+        end
+    end
+end
+U.createESP = function(target, color, nameText, isNPC)
+    if not target or not target.Parent then return nil end
+    U.destroyAllESPObjects(target)
+    local head = target:FindFirstChild("Head") or target:FindFirstChild("HumanoidRootPart") or target.PrimaryPart
+    if not head then return nil end
+    local hl = Instance.new("Highlight")
+    hl.Name = "Ultimatum_ESP_HL"
+    hl.FillColor = color
+    hl.OutlineColor = color
+    hl.FillTransparency = U.Config.ESP.fillTransparency
+    hl.OutlineTransparency = U.Config.ESP.outlineTransparency
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Adornee = target
+    hl.Parent = target
+    local bb = Instance.new("BillboardGui")
+    bb.Name = "Ultimatum_ESP_BB"
+    bb.Size = UDim2.new(0, 300, 0, 60)
+    bb.StudsOffset = Vector3.new(0, 4, 0)
+    bb.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = U.Config.ESP.maxDistance
+    bb.Adornee = head
+    bb.Parent = target
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Parent = bb
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.Size = UDim2.new(1, 0, 0, 18)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = color
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.TextSize = 13
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.Text = nameText
+    nameLabel.Visible = false
+    nameLabel.LayoutOrder = 1
+    nameLabel.Parent = bb
+    local infoLabel = Instance.new("TextLabel")
+    infoLabel.Name = "InfoLabel"
+    infoLabel.Size = UDim2.new(1, 0, 0, 16)
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    infoLabel.TextStrokeTransparency = 0
+    infoLabel.TextSize = 11
+    infoLabel.Font = Enum.Font.SourceSans
+    infoLabel.Text = ""
+    infoLabel.Visible = false
+    infoLabel.LayoutOrder = 2
+    infoLabel.Parent = bb
+    return {
+        highlight = hl, billboard = bb, head = head, target = target,
+        nameLabel = nameLabel, infoLabel = infoLabel, isNPC = isNPC, lastUpdate = 0,
+    }
+end
+U.destroyESP = function(data)
+    if not data then return end
+    pcall(function() if data.highlight then data.highlight:Destroy() end end)
+    pcall(function() if data.billboard then data.billboard:Destroy() end end)
+end
+U.updateESPData = function(data, plr)
+    if not data or not data.billboard or not data.billboard.Parent then return end
+    local now = os.clock()
+    if now - data.lastUpdate < U.Config.ESP.updateInterval then return end
+    data.lastUpdate = now
+    local char = plr.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    local currentHead = char:FindFirstChild("Head") or hrp
+    if data.head ~= currentHead then
+        data.head = currentHead
+        data.billboard.Adornee = currentHead
+    end
+    local myHrp = U.getRoot()
+    local dist = myHrp and math.floor((hrp.Position - myHrp.Position).Magnitude) or 0
+    if data.infoLabel then
+        if U.Config.ESP.showDistance or U.Config.ESP.showHealth then
+            local parts = {}
+            if U.Config.ESP.showDistance then parts[#parts + 1] = dist .. "m" end
+            if U.Config.ESP.showHealth then parts[#parts + 1] = math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth) end
+            data.infoLabel.Text = table.concat(parts, " | ")
+            data.infoLabel.Visible = true
+            data.infoLabel.TextColor3 = U.getColorForPlayer(plr)
+        else
+            data.infoLabel.Text = ""
+            data.infoLabel.Visible = false
+        end
+    end
+    if data.nameLabel then
+        if U.Config.ESP.showNames then
+            local tn = char:GetAttribute("TeacherName")
+            local dev = U.getDevInfo(plr)
+            local special = U.SpecialPlayers[tostring(plr.UserId)]
+            local prefix = ""
+            if tn and tn ~= "" then
+                prefix = tn == "Alice" and "[Δlice] " or ("[" .. tn .. "] ")
+            elseif dev then prefix = "[" .. dev.name .. "] "
+            elseif special then prefix = "[" .. special .. "] "
+            end
+            if plr:GetAttribute("HasVIP") then prefix = prefix .. "[VIP] " end
+            data.nameLabel.Text = prefix .. plr.DisplayName .. " (@" .. plr.Name .. ")"
+            data.nameLabel.TextColor3 = U.getColorForPlayer(plr)
+            data.nameLabel.Visible = true
+        else
+            data.nameLabel.Text = ""
+            data.nameLabel.Visible = false
+        end
+    end
+end
+U.scanPlayers = function()
+    if not U.Config.ESP.enabled or not U.Config.ESP.showPlayers then
+        for plr, data in pairs(U.State.espData) do
+            U.destroyESP(data)
+            U.State.espData[plr] = nil
+        end
+        return
+    end
+    local seen = {}
+    for _, plr in ipairs(U.Players:GetPlayers()) do
+        if plr ~= U.LP and U.isAlive(plr) then
+            seen[plr] = true
+            local char = plr.Character
+            if char then
+                local existing = U.State.espData[plr]
+                local needsRecreate = false
+                if not existing then needsRecreate = true
+                elseif existing.target ~= char then needsRecreate = true
+                elseif not existing.highlight or not existing.highlight.Parent then needsRecreate = true
+                elseif not existing.billboard or not existing.billboard.Parent then needsRecreate = true end
+                if needsRecreate then
+                    if existing then U.destroyESP(existing) end
+                    U.State.espData[plr] = U.createESP(char, U.getColorForPlayer(plr), plr.Name, false)
+                else
+                    local color = U.getColorForPlayer(plr)
+                    existing.highlight.FillColor = color
+                    existing.highlight.OutlineColor = color
+                end
+            end
+        end
+    end
+    for plr, data in pairs(U.State.espData) do
+        if not seen[plr] or not U.isAlive(plr) then
+            U.destroyESP(data)
+            U.State.espData[plr] = nil
+        end
+    end
+end
+U.scanNPCs = function()
+    if not U.Config.ESP.enabled or not U.Config.ESP.showNPCs then
+        for _, data in pairs(U.State.npcData) do U.destroyESP(data) end
+        U.State.npcData = {}
+        return
+    end
+    local seen = {}
+    for _, folderName in ipairs({"Teachers", "Alices"}) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            for _, npc in ipairs(folder:GetChildren()) do
+                if npc:IsA("Model") and not seen[npc] then
+                    local h = npc:FindFirstChildOfClass("Humanoid")
+                    if h and h.Health > 0 then
+                        seen[npc] = true
+                        local existing = U.State.npcData[npc]
+                        local needsRecreate = false
+                        if not existing then needsRecreate = true
+                        elseif not existing.highlight or not existing.highlight.Parent then needsRecreate = true
+                        elseif not existing.billboard or not existing.billboard.Parent then needsRecreate = true end
+                        if needsRecreate then
+                            if existing then U.destroyESP(existing) end
+                            local color = folderName == "Alices" and U.Config.ESP.aliceColor or U.Config.ESP.npcColor
+                            U.State.npcData[npc] = U.createESP(npc, color, npc.Name, true)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for npc, data in pairs(U.State.npcData) do
+        if not seen[npc] or not npc.Parent then
+            U.destroyESP(data)
+            U.State.npcData[npc] = nil
+        end
+    end
+end
+U.cleanupESP = function()
+    for _, d in pairs(U.State.espData) do U.destroyESP(d) end
+    for _, d in pairs(U.State.npcData) do U.destroyESP(d) end
+    U.State.espData = {}
+    U.State.npcData = {}
+end
+U.resetHitbox = function(char)
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.Size = Vector3.new(2, 2, 1)
+        hrp.Transparency = 1
+        hrp.CanCollide = true
+        hrp.Color = Color3.fromRGB(255, 255, 0)
+    end
+end
+U.startHitboxLoop = function()
+    if U.State.hitboxLoopConn then return end
+    U.State.hitboxLoopConn = U.RunService.Heartbeat:Connect(function()
+        for _, plr in ipairs(U.Players:GetPlayers()) do
+            if plr ~= U.LP and plr.Character then
+                local char = plr.Character
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    if not U.Config.Hitbox.enabled or (U.Config.Hitbox.teamCheck and plr.Team == U.LP.Team) then
+                        if hrp.Size.X ~= 2 then U.resetHitbox(char) end
+                    else
+                        -- 优化：只有尺寸不一致时才写入，防止疯狂触发物理引擎重算
+                        local targetSize = Vector3.new(U.Config.Hitbox.size, U.Config.Hitbox.size, U.Config.Hitbox.size)
+                        if hrp.Size ~= targetSize then
+                            hrp.Size = targetSize
+                            hrp.Color = U.Config.Hitbox.color
+                            hrp.Transparency = U.Config.Hitbox.transparency
+                            hrp.CanCollide = U.Config.Hitbox.canCollide
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end
+U.clearHitboxConns = function()
+    if U.State.hitboxLoopConn then
+        pcall(function() U.State.hitboxLoopConn:Disconnect() end)
+        U.State.hitboxLoopConn = nil
+    end
+    for _, plr in ipairs(U.Players:GetPlayers()) do
+        if plr ~= U.LP then
+            local char = plr.Character
+            if char then U.resetHitbox(char) end
+        end
+    end
+end
+U.getTeachers = function()
+    local out, seen = {}, {}
+    for _, fname in ipairs({"Teachers", "Alices"}) do
+        local f = workspace:FindFirstChild(fname)
+        if f then
+            for _, t in ipairs(f:GetChildren()) do
+                if t:IsA("Model") and not seen[t] then
+                    seen[t] = true
+                    table.insert(out, t)
+                end
+            end
+        end
+    end
+    return out
+end
+U.getNearestChaser = function()
+    local root = U.getRoot()
+    if not root then return nil, math.huge end
+    local closest, closestDist = nil, math.huge
+    for _, t in ipairs(U.getTeachers()) do
+        local tr = t:FindFirstChild("HumanoidRootPart")
+        if tr then
+            local d = (tr.Position - root.Position).Magnitude
+            if d < closestDist and d < U.Config.SmartSpeed.detectRange then
+                closestDist = d
+                closest = t
+            end
+        end
+    end
+    return closest, closestDist
+end
+U.getTeacherSpeed = function(teacher)
+    if not teacher then return 16 end
+    if teacher:GetAttribute("Stunned") then return 16 end
+    local root = teacher:FindFirstChild("HumanoidRootPart")
+    if root then
+        local vel = root.AssemblyLinearVelocity or Vector3.zero
+        local spd = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        if spd > 1 then return spd end
+    end
+    local attr = teacher:GetAttribute("RunSpeed")
+    if attr and typeof(attr) == "number" then return attr end
+    local h = teacher:FindFirstChildOfClass("Humanoid")
+    return h and h.WalkSpeed or 16
+end
+U.getProximityFactor = function(dist)
+    if dist >= U.Config.SmartSpeed.mediumRange then return 0 end
+    if dist <= U.Config.SmartSpeed.closeRange then return 1 end
+    return (U.Config.SmartSpeed.mediumRange - dist) / (U.Config.SmartSpeed.mediumRange - U.Config.SmartSpeed.closeRange)
+end
+U.getApproachFactor = function(teacher)
+    local root = U.getRoot()
+    local tr = teacher and teacher:FindFirstChild("HumanoidRootPart")
+    if not root or not tr then return 0 end
+    local vel = tr.AssemblyLinearVelocity or Vector3.zero
+    local toMe = (root.Position - tr.Position)
+    if toMe.Magnitude < 0.1 then return 0 end
+    toMe = toMe.Unit
+    local velDir = Vector3.new(vel.X, 0, vel.Z)
+    if velDir.Magnitude < 1 then return 0 end
+    velDir = velDir.Unit
+    local dot = velDir:Dot(toMe)
+    if dot <= 0 then return 0 end
+    return math.min(dot, 1)
+end
+U.getSprintFactor = function(teacher)
+    if not teacher then return 0 end
+    if teacher:GetAttribute("Running") == true then return 1 end
+    local tr = teacher:FindFirstChild("HumanoidRootPart")
+    if tr then
+        local vel = tr.AssemblyLinearVelocity or Vector3.zero
+        local spd = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        if spd > 20 then return 1 end
+        if spd > 12 then return 0.5 end
+    end
+    return 0
+end
+U.getThreatFactor = function(teacher)
+    if not teacher then return 0 end
+    for _, a in ipairs({"Charging","ChargingGrab","UsingSpikes","Teleporting","Attacking","PounceHit","Enraged"}) do
+        if teacher:GetAttribute(a) == true then return 1 end
+    end
+    if teacher:GetAttribute("Instinct") == true then return 1 end
+    return 0
+end
+U.getBaseSpeed = function()
+    local char = U.getChar()
+    if not char then return 16 end
+    local dw = char:GetAttribute("DefaultWalk") or 16
+    local rs = char:GetAttribute("RunSpeed") or 26
+    U.State.smartSpeed.baseWalk = dw
+    U.State.smartSpeed.baseRun = rs
+    if char:GetAttribute("Running") then return rs else return dw endend
+U.computeTargetSpeed = function()
+    local char = U.getChar()
+    if not char then return 16 end
+    local isRunning = char:GetAttribute("Running")
+    local base = isRunning and U.State.smartSpeed.baseRun or U.State.smartSpeed.baseWalk
+    U.State.smartSpeed.lastBase = base
+    if not U.Config.SmartSpeed.enabled then return base end
+    if U.Config.SmartSpeed.skipIfTeacher and U.isOurTeacher() then return base end
+    local ping = U.getPing()
+    if ping > 0.4 then return base end
+    
+    -- 优化：加入预判剔除，超过检测范围直接返回基础速度
+    local root = U.getRoot()
+    if not root then return base end
+    
+    local chaser, dist = U.getNearestChaser()
+    if not chaser or dist > U.Config.SmartSpeed.detectRange then
+        U.State.smartSpeed.threatMode = false
+        return base
+    end
+    
+    local bonusMult = isRunning and U.Config.SmartSpeed.runBonus or U.Config.SmartSpeed.walkBonus
+    local prox = U.getProximityFactor(dist)
+    local approach = U.getApproachFactor(chaser)
+    local sprint = U.getSprintFactor(chaser)
+    local threat = U.getThreatFactor(chaser)
+    U.State.smartSpeed.threatMode = threat > 0
+    local totalMult = bonusMult
+        + U.Config.SmartSpeed.proximityBonus * prox
+        + U.Config.SmartSpeed.approachBonus * approach
+        + U.Config.SmartSpeed.sprintBonus * sprint
+        + U.Config.SmartSpeed.threatBonus * threat
+    local chaserSpeed = U.getTeacherSpeed(chaser)
+    local speed = math.max(base, chaserSpeed) * totalMult
+    local maxSpeed = isRunning and U.Config.SmartSpeed.maxRunSpeed or U.Config.SmartSpeed.maxWalkSpeed
+    return math.min(speed, maxSpeed)
+end
+U.detectRevert = function()
+    local root = U.getRoot()
+    if not root then return false end
+    local now = os.clock()
+    if now - U.State.smartSpeed.lastCheckTime < 0.2 then return false end
+    if U.State.smartSpeed.lastPos then
+        local dist = (root.Position - U.State.smartSpeed.lastPos).Magnitude
+        local dt = now - U.State.smartSpeed.lastCheckTime
+        local expected = U.State.smartSpeed.lastBase * dt
+        if dist > expected * 4 and dist > 25 then
+            U.State.smartSpeed.reverts = U.State.smartSpeed.reverts + 1
+            return true
+        end
+    end
+    U.State.smartSpeed.lastPos = root.Position
+    U.State.smartSpeed.lastCheckTime = now
+    return false
+end
+U.WALL_PARENT_KEYWORDS = {"map","environment","building","wall","floor","ceiling","room","corridor","world","level","structure","arena"}
+U.WALL_IGNORE_KEYWORDS = {"hitbox","effect","particle","ability","step","stair","decal","texture","trail","smoke","vfx","vignette","hair","hat","accessory","blocked","sfx","sound","candy","candies","prop","detail","glass","window"}
+U.isRealWall = function(object)
+    if not object then return false end
+    if object:IsA("Terrain") then return true end
+    local nl = object.Name:lower()
+    for _, ig in ipairs(U.WALL_IGNORE_KEYWORDS) do if nl:find(ig,1,true) then return false end end
+    local parent = object.Parent
+    while parent and parent ~= workspace do
+        local pN = parent.Name:lower()
+        for _, kw in ipairs(U.WALL_PARENT_KEYWORDS) do if pN:find(kw,1,true) then return true end end
+        parent = parent.Parent
+    end
+    if object:IsA("BasePart") and object.Anchored and not object:IsDescendantOf(U.Players) then
+        local size = object.Size
+        if size.X*size.Y*size.Z > 200 and math.min(size.X,size.Y,size.Z) > 2 then return true end
+    end
+    return false
+end
+U.buildWallFilter = function()
+    local list = { U.getChar(), U.LP.Character }
+    for _, fName in ipairs({"Teachers","Alices","Students"}) do
+        local f = workspace:FindFirstChild(fName)
+        if f then table.insert(list, f) end
+    end
+    return list
+end
+U.isWallBetween = function(fromPos, toPos)
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = U.buildWallFilter()
+    params.IgnoreWater = true
+    local dir = toPos - fromPos
+    if dir.Magnitude < 0.1 then return false end
+    local result = workspace:Raycast(fromPos, dir, params)
+    if not result then return false end
+    return U.isRealWall(result.Instance)
+end
+U.isInRange = function(myRoot, teacherRoot)
+    local ping = U.getPing()
+    if ping > 0.5 then return false end
+    local pred = teacherRoot.Position + (teacherRoot.AssemblyLinearVelocity or Vector3.zero) * (ping * 2)
+    local diff = pred - myRoot.Position
+    if Vector3.new(diff.X, 0, diff.Z).Magnitude > U.Config.AutoBlock.radius then return false end
+    if math.abs(diff.Y) > U.Config.AutoBlock.radiusY then return false end
+    return true
+end
+U.isFacingMe = function(teacherRoot, myRoot)
+    if not U.Config.AutoBlock.checkFacing then return true end
+    local toMe = (myRoot.Position - teacherRoot.Position)
+    if toMe.Magnitude < 0.1 then return true end
+    return teacherRoot.CFrame.LookVector:Dot(toMe.Unit) >= U.Config.AutoBlock.facingDot
+end
+U.doBlock = function()
+    if not U.Config.AutoBlock.enabled then return end
+    local now = os.clock()
+    if now - U.State.lastBlock < U.Config.AutoBlock.cooldown then return end
+    local char = U.getChar()
+    if not char then return end
+    if char:GetAttribute("Stunned") or char:GetAttribute("Ragdolled") then return end
+    U.State.lastBlock = now
+    U.State.blockCount = U.State.blockCount + 1
+    pcall(function()
+        local events = require(U.RS:WaitForChild("Network"):WaitForChild("Events"))
+        events.BlockRequest:Client():Fire()
+    end)
+end
+U.handleThreat = function(teacher)
+    local myRoot = U.getRoot()
+    if not myRoot or not teacher then return end
+    local tRoot = teacher:FindFirstChild("HumanoidRootPart")
+    if not tRoot then return end
+    if not U.isInRange(myRoot, tRoot) then return end
+    if not U.isFacingMe(tRoot, myRoot) then return end
+    if U.Config.AutoBlock.wallCheck then
+        local dir = tRoot.Position - myRoot.Position
+        local ro = myRoot.Position + Vector3.new(0, 1.5, 0)
+        local unit = dir.Unit
+        if U.isWallBetween(ro, ro + unit * dir.Magnitude) then return end
+    end
+    if U.Config.AutoBlock.chargeMode == "start" then
+        U.doBlock()
+    else
+        local prev = U.State.chargeTimers[teacher]
+        if prev then pcall(function() task.cancel(prev) end) end
+        U.State.chargeTimers[teacher] = task.delay(U.Config.AutoBlock.chargeDelay, function()
+            if not U.Config.AutoBlock.enabled then return end
+            if not teacher.Parent then return end
+            local tRN = teacher:FindFirstChild("HumanoidRootPart")
+            local mRN = U.getRoot()
+            if not tRN or not mRN then return end
+            if not U.isInRange(mRN, tRN) then return end
+            if not U.isFacingMe(tRN, mRN) then return end
+            U.doBlock()
+        end)
+    end
+end
+U.isMySound = function(sound)
+    local t = sound:FindFirstAncestorOfClass("Model")
+    if not t then return false end
+    if t == U.LP.Character then return true end
+    if U.Players:GetPlayerFromCharacter(t) == U.LP then return true end
+    return false
+end
+U.isValidSwingName = function(name) return name == "SwingSFX" or name == "Swing" end
+U.hookSound = function(sound)
+    if not sound or not sound:IsA("Sound") then return end
+    if not U.isValidSwingName(sound.Name) then return end
+    if U.State.hooks[sound] then return end
+    U.State.hooks[sound] = sound:GetPropertyChangedSignal("Playing"):Connect(function()
+        if not U.Config.AutoBlock.enabled then return end
+        if not sound.Playing then return end
+        if U.isMySound(sound) then return end
+        local t = sound:FindFirstAncestorOfClass("Model")
+        if not t then return end
+        U.handleThreat(t)
+    end)
+end
+U.hookAnimator = function(teacher)
+    if not teacher or not teacher:IsA("Model") then return end
+    local animator = teacher:FindFirstChildOfClass("Animator")
+    if not animator then return end
+    if U.State.animHooks[animator] then return end
+    U.State.animHooks[animator] = animator.AnimationPlayed:Connect(function(track)
+        if not U.Config.AutoBlock.enabled then return end
+        if teacher == U.LP.Character then return end
+        if U.Players:GetPlayerFromCharacter(teacher) == U.LP then return end
+        local animId = track.Animation and track.Animation.AnimationId or ""
+        local numId = animId:match("%d+")
+        if numId and U.AttackAnimIds[numId] then U.handleThreat(teacher) end
+    end)
+end
+U.watchTeacherCharging = function(teacher)
+    if not teacher or not teacher:IsA("Model") then return end
+    if teacher:GetAttribute("_ABWatched") then return end
+    teacher:SetAttribute("_ABWatched", true)
+    if teacher == U.LP.Character then return end
+    for _, attrName in ipairs({"Charging","ChargingGrab","Attacking","Swinging","UsingSpikes","PounceHit"}) do
+        teacher:GetAttributeChangedSignal(attrName):Connect(function()
+            if not U.Config.AutoBlock.enabled then return end
+            if U.Config.AutoBlock.chargeMode == "ignore" then return end
+            if teacher:GetAttribute(attrName) == true then U.handleThreat(teacher) end
+        end)
+    end
+end
+U.scanTeacherForBlock = function(teacher)
+    if not teacher or not teacher:IsA("Model") then return end
+    for _, d in ipairs(teacher:GetDescendants()) do
+        if d:IsA("Sound") and U.isValidSwingName(d.Name) then U.hookSound(d) end
+    end
+    U.hookAnimator(teacher)
+    U.watchTeacherCharging(teacher)
+end
+U.scanAllTeachers = function()
+    for _, folderName in ipairs({"Teachers","Alices"}) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then for _, t in ipairs(folder:GetChildren()) do U.scanTeacherForBlock(t) end end
+    end
+end
+U.clearStunAttrs = function()
+    local char = U.getChar()
+    if not char then return end
+    if char:GetAttribute("Stunned") then char:SetAttribute("Stunned", false); U.State.stunResets = U.State.stunResets + 1 end
+    if char:GetAttribute("Ragdolled") then char:SetAttribute("Ragdolled", false) end
+end
+U.clearMoveLocks = function()
+    local hum = U.getHum()
+    if not hum then return end
+    for _, child in ipairs(hum:GetChildren()) do
+        if child:HasTag("MoveLock") or child.Name == "MoveLocked" or child.Name == "SprintLock" or child.Name == "JumpLock" then
+            pcall(function() child:Destroy() end)
+        end
+    end
+end
+U.clearHumanoidStates = function()
+    local hum = U.getHum()
+    if not hum then return end
+    local state = hum:GetState()
+    if state == Enum.HumanoidStateType.FallingDown or state == Enum.HumanoidStateType.Ragdoll or state == Enum.HumanoidStateType.Physics then
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.Running) end)
+    end
+    if not hum.AutoRotate then hum.AutoRotate = true end
+    if hum.PlatformStand then hum.PlatformStand = false end
+end
+U.forceWalkSpeed = function()
+    local char = U.getChar()
+    local hum = U.getHum()
+    if not char or not hum then return end
+    if hum.WalkSpeed > 0 then return end
+    local base = char:GetAttribute("DefaultWalk") or 16
+    if char:GetAttribute("Running") then base = char:GetAttribute("RunSpeed") or 26 end
+    if char:GetAttribute("Stunned") or char:GetAttribute("Ragdolled") then base = math.max(base, 16) end
+    hum.WalkSpeed = base
+end
+U.isVisible = function(part)
+    if not U.Config.Aim.visibleCheck then return true end
+    local camera = U.getCamera()
+    local origin = camera.CFrame.Position
+    local dir = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {U.LP.Character, camera}
+    local result = workspace:Raycast(origin, dir, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(part.Parent)
+end
+U.getAimPartModel = function(model, partName)
+    if not model then return nil end
+    local chosen = model:FindFirstChild(partName)
+    if chosen then return chosen end
+    return model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+end
+U.collectTeacherAimModels = function()
+    local out, seen = {}, {}
+    for _, folder in ipairs(U.getTeacherAimFolders()) do
+        for _, m in ipairs(folder:GetChildren()) do
+            if m:IsA("Model") and m ~= U.getChar() and not seen[m] then
+                local h = m:FindFirstChildOfClass("Humanoid")
+                if h and h.Health > 0 then
+                    seen[m] = true
+                    table.insert(out, m)
+                end
+            end
+        end
+    end
+    return out
+end
+U.findBloomieAimTarget = function()
+    local camera = U.getCamera()
+    local closest, closestScore = nil, math.huge
+    for _, model in ipairs(U.collectTeacherAimModels()) do
+        local part = U.getAimPartModel(model, U.Config.Aim.aimPart)
+        if part then
+            local dist = (part.Position - camera.CFrame.Position).Magnitude
+            if dist <= U.Config.Aim.maxDistance then
+                local _, onScreen = camera:WorldToScreenPoint(part.Position)
+                if onScreen and U.isVisible(part) then
+                    if dist < closestScore then closestScore = dist; closest = model end
+                end
+            end
+        end
+    end
+    return closest
+end
+U.predictPosition = function(part)
+    if not U.Config.Aim.usePrediction then return part.Position end
+    local now = os.clock()
+    local ping = U.getPing()
+    return part.Position + (part.AssemblyLinearVelocity or Vector3.zero) * ping
+end
+U.normalizeText = function(text)
+    if not text then return "" end
+    text = tostring(text):lower()
+    text = text:gsub("^%a%.%s*", "")
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    text = text:gsub("%s+", " ")
+    return text
+end
+U.getCorrectAnswer = function(questionText)
+    if not questionText then return nil end
+    for _, qa in pairs(U.Answers) do
+        if qa[questionText] then return qa[questionText] end
+    end
+    local qLow = questionText:lower():gsub("%s+", " ")
+    for _, qa in pairs(U.Answers) do
+        for q, a in pairs(qa) do
+            if q:lower():gsub("%s+", " ") == qLow then return a end
+        end
+    end
+    return nil
+end
+U.highlightNotebook = function(btn)
+    if not btn or not btn:IsA("TextButton") then return end
+    if btn:GetAttribute("HLDone2") then return end
+    btn:SetAttribute("HLDone2", true)
+    btn.BackgroundColor3 = Color3.fromRGB(0, 255, 90)
+    btn.TextColor3 = Color3.fromRGB(0, 0, 0)
+    btn.TextStrokeTransparency = 1
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = btn.TextSize + 4
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 3
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = btn
+    task.spawn(function()
+        while btn.Parent do
+            for i = 0, 1, 0.1 do
+                if not btn.Parent then return end
+                local t = (math.sin(i * math.pi * 2) + 1) / 2
+                pcall(function() stroke.Transparency = 0.2 + t * 0.6 end)
+                task.wait(0.03)
+            end
+        end
+    end)
+    btn.Text = "✓ " .. btn.Text
+    U.State.highlighted = U.State.highlighted + 1
+end
+U.processQuestion = function(qf)
+    if not qf or not qf:IsA("Frame") then return end
+    if qf.Name == "Template" then return end
+    if not qf.Name:match("^Question") then return end
+    if qf:GetAttribute("HLDoneQ") then return end
+    local qt = qf:FindFirstChild("QuestionText")
+    if not qt or not qt:IsA("TextLabel") then return end
+    local bl = qf:FindFirstChild("ButtonList")
+    if not bl then return end
+    local correct = U.getCorrectAnswer(qt.Text)
+    if not correct then return end
+    local correctNorm = U.normalizeText(correct)
+    qf:SetAttribute("HLDoneQ", true)
+    task.spawn(function()
+        for _ = 1, 8 do
+            if not U.Config.Notebook.enabled then return end
+            for _, ch in ipairs(bl:GetChildren()) do
+                if ch:IsA("TextButton") and ch.Visible then
+                    local bn = U.normalizeText(ch.Text)
+                    if bn ~= "" and (bn == correctNorm or bn:find(correctNorm, 1, true)) then
+                        U.highlightNotebook(ch)
+                        return
+                    end
+                end
+            end
+            task.wait(0.25)
+        end
+        qf:SetAttribute("HLDoneQ", false)
+    end)
+end
+U.hookNotebookFrame = function(f)
+    if not f or not f:IsA("Frame") then return end
+    if f.Name == "Template" then return end
+    if not f.Name:match("^Question") then return end
+    task.spawn(function()
+        task.wait(0.5)
+        if U.Config.Notebook.enabled then U.processQuestion(f) end
+    end)
+end
+U.findNotebookMainFrame = function()
+    local pg = U.LP:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local gui = pg:FindFirstChild("GameUI")
+    if not gui then return nil end
+    local nb = gui:FindFirstChild("Notebook")
+    if not nb then return nil end
+    local ql = nb:FindFirstChild("QuestionsList")
+    if not ql then return nil end
+    return ql:FindFirstChild("MainFrame")
+end
+U.unhookNotebook = function()
+    if U.State.notebookHooked then
+        pcall(function() U.State.notebookHooked:Disconnect() end)
+        U.State.notebookHooked = nil
+    end
+end
+U.hookNotebook = function()
+    U.unhookNotebook()
+    local mf = U.findNotebookMainFrame()
+    if not mf then return end
+    for _, ch in ipairs(mf:GetChildren()) do U.hookNotebookFrame(ch) end
+    U.State.notebookHooked = mf.ChildAdded:Connect(function(ch)
+        if U.Config.Notebook.enabled then U.hookNotebookFrame(ch) end
+    end)
+end
+U.getDoorsFolder = function()
+    local area = workspace:FindFirstChild("Area")
+    if not area then return nil end
+    local map = area:FindFirstChild("Map")
+    if not map then return nil end
+    return map:FindFirstChild("Doors")
+end
+U.doorNoclipPart = function(part)
+    if not part or not part:IsA("BasePart") then return end
+    local dn = U.State.doorNoclip
+    if dn.original[part] ~= nil then return end
+    dn.original[part] = part.CanCollide
+    part.CanCollide = false
+end
+U.doorNoclipModel = function(model)
+    if not model or not model:IsA("Model") then return end
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") then U.doorNoclipPart(d) end
+    end
+end
+U.processDoubleDoor = function(model)
+    if not model or not model:IsA("Model") then return end
+    local dd1 = model:FindFirstChild("DoubleDoor")
+    local dd2 = model:FindFirstChild("DoubleDoor2")
+    if dd1 then U.doorNoclipModel(dd1) end
+    if dd2 then U.doorNoclipModel(dd2) end
+end
+U.processSingleDoor = function(model)
+    if not model or not model:IsA("Model") then return end
+    local mesh = model:FindFirstChild("Mesh")
+    if mesh then U.doorNoclipModel(mesh) end
+end
+U.scanDoor = function(door)
+    if not door or not door:IsA("Model") then return end
+    local dn = U.State.doorNoclip
+    if door.Name == "RealDoubleDoor" or door:FindFirstChild("DoubleDoor") then
+        U.processDoubleDoor(door)
+    elseif door.Name == "SingleDoor" or door:FindFirstChild("Mesh") then
+        U.processSingleDoor(door)
+    else
+        for _, child in ipairs(door:GetChildren()) do
+            if child:IsA("Model") and (child.Name == "DoubleDoor" or child.Name == "DoubleDoor2" or child.Name == "Mesh") then
+                U.doorNoclipModel(child)
+            end
+        end
+    end
+    if not dn.hooked[door] then
+        dn.hooked[door] = true
+        table.insert(dn.connections, door.DescendantAdded:Connect(function(d)
+            if not U.Config.DoorNoclip.enabled then return end
+            if d:IsA("BasePart") then U.doorNoclipPart(d) end
+        end))
+    end
+end
+U.scanAllDoors = function()
+    local doors = U.getDoorsFolder()
+    if not doors then return end
+    local dn = U.State.doorNoclip
+    dn.doorCount = 0
+    for _, door in ipairs(doors:GetChildren()) do
+        if door:IsA("Model") then
+            dn.doorCount = dn.doorCount + 1
+            pcall(U.scanDoor, door)
+        end
+    end
+end
+U.restoreAllDoors = function()
+    local dn = U.State.doorNoclip
+    for part, orig in pairs(dn.original) do
+        if part and part.Parent then pcall(function() part.CanCollide = orig end) end
+    end
+    dn.original = {}
+end
+U.hookNewDoors = function()
+    local doors = U.getDoorsFolder()
+    if not doors then return end
+    table.insert(U.State.doorNoclip.connections, doors.ChildAdded:Connect(function(child)
+        if not U.Config.DoorNoclip.enabled then return end
+        if child:IsA("Model") then
+            task.wait(0.1)
+            pcall(U.scanDoor, child)
+        end
+    end))
+end
+U.applyDoorNoclip = function()
+    if U.Config.DoorNoclip.enabled then
+        U.hookNewDoors()
+        U.scanAllDoors()
+    else
+        U.restoreAllDoors()
+        for _, conn in ipairs(U.State.doorNoclip.connections) do pcall(function() conn:Disconnect() end) end
+        U.State.doorNoclip.connections = {}
+        U.State.doorNoclip.hooked = {}
+    end
+end
+U.abKillBarrier = function(part)
+    if part and part:IsA("BasePart") and part.Name == "Barrier" then
+        if part.CanCollide then part.CanCollide = false end
+        local ab = U.State.aliceBarrier
+        if not ab.touched[part] then
+            ab.touched[part] = true
+            table.insert(ab.connections, part:GetPropertyChangedSignal("CanCollide"):Connect(function()
+                if U.Config.AliceBarrierNoclip.enabled and part.CanCollide then
+                    part.CanCollide = false
+                end
+            end))
+        end
+    end
+end
+U.abScanModel = function(model)
+    if not model then return end
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") and d.Name == "Barrier" then U.abKillBarrier(d) end
+    end
+end
+U.abScanAll = function()
+    if not U.Config.AliceBarrierNoclip.enabled then return end
+    local area = workspace:FindFirstChild("Area")
+    local ab = area and area:FindFirstChild("AliceBarriers")
+    if not ab then return end
+    for _, m in ipairs(ab:GetChildren()) do
+        if m:IsA("Model") then U.abScanModel(m) end
+    end
+end
+U.abHookModels = function()
+    if next(U.State.aliceBarrier.hooked) ~= nil then return end
+    local area = workspace:FindFirstChild("Area")
+    local ab = area and area:FindFirstChild("AliceBarriers")
+    if ab then
+        U.State.aliceBarrier.hooked[ab] = true
+        table.insert(U.State.aliceBarrier.connections, ab.DescendantAdded:Connect(function(d)
+            if not U.Config.AliceBarrierNoclip.enabled then return end
+            if d:IsA("BasePart") and d.Name == "Barrier" then U.abKillBarrier(d) end
+        end))
+        table.insert(U.State.aliceBarrier.connections, ab.ChildAdded:Connect(function(c)
+            if not U.Config.AliceBarrierNoclip.enabled then return end
+            if c:IsA("Model") then task.wait(0.1); U.abScanModel(c) end
+        end))
+    end
+end
+U.applyAliceBarrierNoclip = function()
+    if U.Config.AliceBarrierNoclip.enabled then
+        U.abHookModels()
+        U.abScanAll()
+    else
+        for _, conn in ipairs(U.State.aliceBarrier.connections) do pcall(function() conn:Disconnect() end) end
+        U.State.aliceBarrier.connections = {}
+        U.State.aliceBarrier.hooked = {}
+        U.State.aliceBarrier.touched = {}
+    end
+end
+U.animIdValue = ""
+U.stopAnimation = function()
+    if U.State.animTrackStoppedConn then
+        pcall(function() U.State.animTrackStoppedConn:Disconnect() end)
+        U.State.animTrackStoppedConn = nil
+    end
+    if U.State.currentTrack then
+        pcall(function() U.State.currentTrack:Stop(0) end)
+        pcall(function() U.State.currentTrack:Destroy() end)
+        U.State.currentTrack = nil
+    end
+    U.State.animPlaying = false
+end
+U.playAnimation = function(animId, loop, speed)
+    local hum = U.getHum()
+    if not hum or not animId or animId == "" then return end
+    U.stopAnimation()
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = hum
+    end
+    local id = tostring(animId)
+    if id:match("^%d+$") then
+        id = "rbxassetid://" .. id
+    elseif not id:match("rbxassetid") and not id:match("^http") then
+        id = "rbxassetid://" .. id
+    end
+    local anim = Instance.new("Animation")
+    anim.AnimationId = id
+    local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+    if not ok or not track then return end
+    track.Priority = Enum.AnimationPriority.Action4
+    pcall(function() track.Looped = loop end)
+    local played = pcall(function() track:Play(0.1) end)
+    if not played then return end
+    pcall(function() track:AdjustSpeed(speed) end)
+    U.State.currentTrack = track
+    U.State.animPlaying = true
+    local t = track
+    U.State.animTrackStoppedConn = t.Stopped:Connect(function()
+        if U.State.currentTrack == t then
+            U.State.currentTrack = nil
+            U.State.animPlaying = false
+            if U.State.animTrackStoppedConn then
+                pcall(function() U.State.animTrackStoppedConn:Disconnect() end)
+                U.State.animTrackStoppedConn = nil
+            end
+        end
+    end)
+end
+U.toggleAnimationHotkey = function()
+    local id = U.animIdValue
+    if id == nil or id == "" then id = U.Config.Animations.currentId end
+    if id == nil or id == "" then return end
+    U.Config.Animations.currentId = id
+    if U.State.animPlaying then
+        U.stopAnimation()
+    else
+        U.playAnimation(id, U.Config.Animations.loop, U.Config.Animations.speed)
+    end
+end
+U.applyFullbright = function()
+    if U.Config.Fullbright.enabled then
+        if not U.State.fullbrightSaved then
+            U.State.fullbrightSaved = {
+                Brightness = U.Lighting.Brightness, ClockTime = U.Lighting.ClockTime,
+                Ambient = U.Lighting.Ambient, OutdoorAmbient = U.Lighting.OutdoorAmbient,
+                FogEnd = U.Lighting.FogEnd, GlobalShadows = U.Lighting.GlobalShadows,
+            }
+        end
+        U.Lighting.Brightness = U.Config.Fullbright.brightness
+        U.Lighting.ClockTime = U.Config.Fullbright.clockTime
+        U.Lighting.Ambient = U.Config.Fullbright.ambient
+        U.Lighting.OutdoorAmbient = U.Config.Fullbright.ambient
+        U.Lighting.FogEnd = 1e6
+        U.Lighting.GlobalShadows = false
+    else
+        if U.State.fullbrightSaved then
+            local s = U.State.fullbrightSaved
+            U.Lighting.Brightness = s.Brightness
+            U.Lighting.ClockTime = s.ClockTime
+            U.Lighting.Ambient = s.Ambient
+            U.Lighting.OutdoorAmbient = s.OutdoorAmbient
+            U.Lighting.FogEnd = s.FogEnd
+            U.Lighting.GlobalShadows = s.GlobalShadows
+            U.State.fullbrightSaved = nil
+        end
+    end
+end
+U.applyFOV = function()
+    local camera = U.getCamera()
+    if U.Config.FOV.enabled then
+        if not U.State.fovSaved then U.State.fovSaved = camera.FieldOfView end
+        camera.FieldOfView = U.Config.FOV.value
+        if U.Config.FOV.forceEnabled and not U.State.fovConn then
+            U.State.fovConn = camera:GetPropertyChangedSignal("FieldOfView"):Connect(function()
+                if U.Config.FOV.enabled and U.Config.FOV.forceEnabled then
+                    if math.abs(camera.FieldOfView - U.Config.FOV.value) > 0.01 then
+                        camera.FieldOfView = U.Config.FOV.value
+                    end
+                end
+            end)
+        end
+    else
+        if U.State.fovConn then pcall(function() U.State.fovConn:Disconnect() end); U.State.fovConn = nil end
+        if U.State.fovSaved then camera.FieldOfView = U.State.fovSaved; U.State.fovSaved = nil end
+    end
+end
+U.saveCamera = function()
+    if U.State.cameraSaved then return end
+    U.State.cameraSaved = { mode = U.LP.CameraMode, maxZoom = U.LP.CameraMaxZoomDistance, minZoom = U.LP.CameraMinZoomDistance }
+end
+U.applyCameraForce = function()
+    if U.State.cameraConn then pcall(function() U.State.cameraConn:Disconnect() end); U.State.cameraConn = nil end
+    if not U.Config.ThirdPerson.enabled then return end
+    if not U.Config.ThirdPerson.forceEnabled then return end
+    U.State.cameraConn = U.RunService.Heartbeat:Connect(function()
+        if not U.Config.ThirdPerson.enabled then return end
+        if U.LP.CameraMode ~= Enum.CameraMode.Classic then U.LP.CameraMode = Enum.CameraMode.Classic end
+        if math.abs(U.LP.CameraMaxZoomDistance - U.Config.ThirdPerson.maxZoom) > 0.1 then U.LP.CameraMaxZoomDistance = U.Config.ThirdPerson.maxZoom end
+        if math.abs(U.LP.CameraMinZoomDistance - U.Config.ThirdPerson.minZoom) > 0.1 then U.LP.CameraMinZoomDistance = U.Config.ThirdPerson.minZoom end
+    end)
+end
+U.applyThirdPerson = function()
+    if U.Config.ThirdPerson.enabled then
+        U.saveCamera()
+        U.LP.CameraMode = Enum.CameraMode.Classic
+        U.LP.CameraMaxZoomDistance = U.Config.ThirdPerson.maxZoom
+        U.LP.CameraMinZoomDistance = U.Config.ThirdPerson.minZoom
+        U.applyCameraForce()
+    else
+        if U.State.cameraConn then pcall(function() U.State.cameraConn:Disconnect() end); U.State.cameraConn = nil end
+        if U.State.cameraSaved then
+            U.LP.CameraMode = U.State.cameraSaved.mode
+            U.LP.CameraMaxZoomDistance = U.State.cameraSaved.maxZoom
+            U.LP.CameraMinZoomDistance = U.State.cameraSaved.minZoom
+            U.State.cameraSaved = nil        end
+    end
+end
+U.setupStaminaSignal = function()
+    local char = U.getChar()
+    if not char then return end
+    if U.State.staminaConns[char] then return end
+    if not U.Config.InfStamina.enabled then return end
+    task.spawn(function()
+        local waited = 0
+        while waited < 5 and char.Parent do
+            if not U.Config.InfStamina.enabled then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local stats = hum and hum:FindFirstChild("StaminaStats")
+            if stats then
+                U.State.staminaConns[char] = stats:GetAttributeChangedSignal("Stamina"):Connect(function()
+                    if not U.Config.InfStamina.enabled then return end
+                    local maxStam = stats:GetAttribute("MaxStamina") or 100
+                    if stats:GetAttribute("Stamina") < maxStam then
+                        stats:SetAttribute("Stamina", maxStam)
+                    end
+                end)
+                local maxStam = stats:GetAttribute("MaxStamina") or 100
+                if stats:GetAttribute("Stamina") < maxStam then
+                    stats:SetAttribute("Stamina", maxStam)
+                end
+                return
+            end
+            task.wait(0.1)
+            waited = waited + 0.1
+        end
+    end)
+end
+U.clearStaminaSignals = function()
+    for _, conn in pairs(U.State.staminaConns) do pcall(function() conn:Disconnect() end) end
+    U.State.staminaConns = {}
+end
+U.hookAutoBlockFolders = function()
+    if next(U.State.autoBlockFolderConns) ~= nil then return end
+    for _, folderName in ipairs({"Teachers","Alices"}) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            U.State.autoBlockFolderConns[folder] = folder.ChildAdded:Connect(function(c)
+                task.wait(0.1)
+                U.scanTeacherForBlock(c)
+            end)
+            table.insert(U.State.autoBlockDescConns, folder.DescendantAdded:Connect(function(d)
+                if d:IsA("Sound") and U.isValidSwingName(d.Name) then task.wait(0.05); U.hookSound(d) end
+            end))
+        end
+    end
+end
+U.unhookAutoBlockFolders = function()
+    for _, conn in pairs(U.State.autoBlockFolderConns) do pcall(function() conn:Disconnect() end) end
+    for _, conn in ipairs(U.State.autoBlockDescConns) do pcall(function() conn:Disconnect() end) end
+    U.State.autoBlockFolderConns = {}
+    U.State.autoBlockDescConns = {}
+end
+U.applyNoCircleEnrage = function()
+    if U.Config.NoCircleEnrage.enabled then
+        local ce = U.Lighting:FindFirstChild("CircleEnrage")
+        if ce and ce:IsA("ColorCorrectionEffect") then
+            if U.State.noCircleEnrage.savedCC[ce] == nil then
+                U.State.noCircleEnrage.savedCC[ce] = { enabled = ce.Enabled, tint = ce.TintColor }
+            end
+            ce.Enabled = false
+            if not U.State.noCircleEnrage.conns[ce] then
+                U.State.noCircleEnrage.conns[ce] = ce:GetPropertyChangedSignal("Enabled"):Connect(function()
+                    if U.Config.NoCircleEnrage.enabled and ce.Enabled then ce.Enabled = false end
+                end)
+            end
+        end
+        local pg = U.LP:FindFirstChild("PlayerGui")
+        local gui = pg and pg:FindFirstChild("GameUI")
+        local visuals = gui and gui:FindFirstChild("Visuals")
+        local circle = visuals and visuals:FindFirstChild("MissCircle")
+        local ev = circle and circle:FindFirstChild("EnragedVisuals")
+        if ev then
+            if not U.State.noCircleEnrage.conns[ev] then
+                U.State.noCircleEnrage.conns[ev] = ev:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if U.Config.NoCircleEnrage.enabled and ev.Visible then ev.Visible = false end
+                end)
+            end
+            ev.Visible = false
+        end
+        local cv = circle and circle:FindFirstChild("ChargingVignette")
+        if cv then
+            if not U.State.noCircleEnrage.conns[cv] then
+                U.State.noCircleEnrage.conns[cv] = cv:GetPropertyChangedSignal("Visible"):Connect(function()
+                    if U.Config.NoCircleEnrage.enabled and cv.Visible then cv.Visible = false end
+                end)
+            end
+            cv.Visible = false
+        end
+    else
+        for cc, saved in pairs(U.State.noCircleEnrage.savedCC) do
+            if cc and cc.Parent then cc.Enabled = saved.enabled; cc.TintColor = saved.tint end
+        end
+        U.State.noCircleEnrage.savedCC = {}
+        for _, conn in pairs(U.State.noCircleEnrage.conns) do pcall(function() conn:Disconnect() end) end
+        U.State.noCircleEnrage.conns = {}
+    end
+end
+U.showAllSkinsTick = function()
+    local gui = U.LP.PlayerGui:FindFirstChild("SkinsSelectionGui")
+    if not gui then return end
+    local frame = gui:FindFirstChild("FrameOfList")
+    if not frame then return end
+    local list = frame:FindFirstChild("List")
+    if not list then return end
+    for _, child in ipairs(list:GetChildren()) do
+        if child:IsA("Frame") and child.Name ~= "Template" then child.Visible = true end
+    end
+end
+U.startShowAllSkins = function()
+    if U.State.showAllSkins.thread then return end
+    U.State.showAllSkins.enabled = true
+    U.State.showAllSkins.thread = task.spawn(function()
+        while U.State.showAllSkins.enabled do
+            pcall(U.showAllSkinsTick)
+            task.wait(0.5)
+        end
+    end)
+end
+U.stopShowAllSkins = function()
+    U.State.showAllSkins.enabled = false
+    if U.State.showAllSkins.thread then pcall(function() task.cancel(U.State.showAllSkins.thread) end); U.State.showAllSkins.thread = nil end
+end
+U.teleportTo = function(pos)
+    local root = U.getRoot()
+    if not root then return false end
+    root.CFrame = CFrame.new(pos)
+    return true
+end
+
+U.ti = U.State.teacherIndicator
+U.tiEnsureGui = function()
+    if U.ti.gui then return U.ti.gui end
+    local pg = U.LP:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "Ultimatum_TeacherIndicator"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.DisplayOrder = 100
+    sg.Parent = pg
+    U.ti.gui = sg
+    return sg
+end
+U.tiGetCategory = function(model)
+    if not model then return nil end
+    local tn = model:GetAttribute("TeacherName")
+    if not tn or tn == "" then
+        local p = model.Parent
+        if p and p.Name == "Alices" then return "Alice" end
+        return nil
+    end
+    if tn == "AlicePhase2" then return "Alice" end
+    return tn
+end
+U.tiMakeIcon = function(category)
+    local tex = U.TeacherTextures[category]
+    if not tex then return nil end
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(0, U.ti.iconSize, 0, U.ti.iconSize + 18)
+    container.ZIndex = 100
+    container.Visible = false
+    local img = Instance.new("ImageLabel")
+    img.Size = UDim2.new(1, 0, 0, U.ti.iconSize)
+    img.BackgroundTransparency = 1
+    img.Image = tex
+    img.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    img.ZIndex = 100
+    img.Parent = container
+    local distLbl = Instance.new("TextLabel")
+    distLbl.Name = "DistLabel"
+    distLbl.Size = UDim2.new(1, 0, 0, 14)
+    distLbl.Position = UDim2.new(0, 0, 0, U.ti.iconSize)
+    distLbl.BackgroundTransparency = 1
+    distLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    distLbl.TextStrokeTransparency = 0.2
+    distLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    distLbl.Font = Enum.Font.GothamBold
+    distLbl.TextSize = 11
+    distLbl.Text = ""
+    distLbl.ZIndex = 100
+    distLbl.Parent = container
+    local seenLbl = Instance.new("TextLabel")
+    seenLbl.Name = "SeenLabel"
+    seenLbl.Size = UDim2.new(1, 0, 0, 14)
+    seenLbl.Position = UDim2.new(0, 0, 0, U.ti.iconSize + 12)
+    seenLbl.BackgroundTransparency = 1
+    seenLbl.TextColor3 = Color3.fromRGB(255, 60, 60)
+    seenLbl.TextStrokeTransparency = 0.2
+    seenLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    seenLbl.Font = Enum.Font.GothamBold
+    seenLbl.TextSize = 10
+    seenLbl.Text = ""
+    seenLbl.ZIndex = 100
+    seenLbl.Parent = container
+    return container, img, distLbl, seenLbl
+end
+U.tiCanSeeUs = function(teacherModel, myRoot)
+    if not teacherModel or not myRoot then return false end
+    local head = teacherModel:FindFirstChild("Head") or teacherModel:FindFirstChild("HumanoidRootPart")
+    local tRoot = teacherModel:FindFirstChild("HumanoidRootPart")
+    if not head or not tRoot then return false end
+    local toUs = myRoot.Position - head.Position
+    if toUs.Magnitude < 0.1 then return true end
+    local facing = tRoot.CFrame.LookVector
+    local flatTo = Vector3.new(toUs.X, 0, toUs.Z)
+    if flatTo.Magnitude < 0.1 then return true end
+    flatTo = flatTo.Unit
+    local flatFacing = Vector3.new(facing.X, 0, facing.Z)
+    if flatFacing.Magnitude < 0.1 then return false end
+    flatFacing = flatFacing.Unit
+    if flatFacing:Dot(flatTo) < 0.2 then return false end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {teacherModel, U.getChar()}
+    params.IgnoreWater = true
+    local result = workspace:Raycast(head.Position, toUs, params)
+    if not result then return true end
+    if result.Instance:IsDescendantOf(U.getChar()) then return true end
+    return false
+end
+U.tiUpdate = function()
+    if not U.ti.enabled then return end
+    local sg = U.tiEnsureGui()
+    if not sg then return end
+    local camera = U.getCamera()
+    if not camera then return end
+    local myRoot = U.getRoot()
+    if not myRoot then return end
+    local viewport = camera.ViewportSize
+    local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
+    local radius = U.ti.radius
+    local cameraLook = camera.CFrame.LookVector
+    local cameraRight = camera.CFrame.RightVector
+    local seen = {}
+    
+    -- 优化：限制射线检测频率，不再每帧检测 (每 0.1 秒检测一次)
+    local now = os.clock()
+    local doVisCheck = (now - (U.State.lastTIVisCheck or 0)) > 0.1
+    if doVisCheck then U.State.lastTIVisCheck = now end
+
+    for _, folderName in ipairs({"Teachers","Alices"}) do
+        local folder = workspace:FindFirstChild(folderName)
+        if folder then
+            for _, model in ipairs(folder:GetChildren()) do
+                if model:IsA("Model") and model ~= U.LP.Character and not seen[model] then
+                    local h = model:FindFirstChildOfClass("Humanoid")
+                    if h and h.Health > 0 then
+                        local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Head")
+                        if hrp then
+                            seen[model] = true
+                            local cat = U.tiGetCategory(model)
+                            local data = U.ti.indicators[model]
+                            if not data or data.category ~= cat then
+                                if data and data.icon then data.icon:Destroy() end
+                                local container, img, distLbl, seenLbl = U.tiMakeIcon(cat)
+                                if container then
+                                    container.Parent = sg
+                                    data = { icon = container, image = img, distLabel = distLbl, seenLabel = seenLbl, category = cat }
+                                    U.ti.indicators[model] = data
+                                else
+                                    U.ti.indicators[model] = nil
+                                    data = nil
+                                end
+                            end
+                            if data and data.icon then
+                                local toT = hrp.Position - camera.CFrame.Position
+                                if toT.Magnitude > 0.1 then
+                                    local dist = toT.Magnitude
+                                    local unit = toT.Unit
+                                    local angle = math.atan2(unit:Dot(cameraRight), unit:Dot(cameraLook))
+                                    local baseSize = U.ti.iconSize
+                                    local sz = baseSize
+                                    if U.Config.TeacherIndicator.scaleByDistance then
+                                        sz = math.clamp(baseSize * (1.2 - dist / 300), baseSize * 0.6, baseSize * 1.3)
+                                    end
+                                    local x = math.sin(angle) * radius
+                                    local y = -math.cos(angle) * radius
+                                    data.icon.Size = UDim2.new(0, sz, 0, sz + 18)
+                                    data.icon.Position = UDim2.new(0, center.X + x - sz / 2, 0, center.Y + y - sz / 2)
+                                    local w = sz
+                                    if data.image then data.image.Size = UDim2.new(1, 0, 0, w) end
+                                    if data.distLabel then
+                                        if U.Config.TeacherIndicator.showDistance then
+                                            data.distLabel.Position = UDim2.new(0, 0, 0, w)
+                                            data.distLabel.Text = string.format("%dm", math.floor(dist))
+                                            data.distLabel.Visible = true
+                                        else
+                                            data.distLabel.Visible = false
+                                        end
+                                    end
+                                    if data.seenLabel then
+                                        if U.Config.TeacherIndicator.showVisibility then
+                                            if doVisCheck or data.lastSeenState == nil then
+                                                data.lastSeenState = U.tiCanSeeUs(model, myRoot)
+                                            end
+                                            if data.lastSeenState then
+                                                data.seenLabel.Position = UDim2.new(0, 0, 0, w + 12)
+                                                data.seenLabel.Text = "SEEN"
+                                                data.seenLabel.Visible = true
+                                                if data.image then data.image.ImageColor3 = Color3.fromRGB(255, 80, 80) end
+                                            else
+                                                data.seenLabel.Text = ""
+                                                data.seenLabel.Visible = false
+                                                if data.image then data.image.ImageColor3 = Color3.fromRGB(255, 255, 255) end
+                                            end
+                                        else
+                                            data.seenLabel.Visible = false
+                                            if data.image then data.image.ImageColor3 = Color3.fromRGB(255, 255, 255) end
+                                        end
+                                    end
+                                    data.icon.Visible = true
+                                else
+                                    data.icon.Visible = false
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    for model, data in pairs(U.ti.indicators) do
+        if not seen[model] or not model.Parent then
+            if data.icon then data.icon:Destroy() end
+            U.ti.indicators[model] = nil
+        end
+    end
+end
+U.tiStart = function()
+    U.ti.enabled = true
+    U.tiEnsureGui()
+    if not U.ti.conn then
+        U.ti.conn = U.RunService.RenderStepped:Connect(function() pcall(U.tiUpdate) end)
+    end
+end
+U.tiStop = function()
+    U.ti.enabled = false
+    if U.ti.conn then pcall(function() U.ti.conn:Disconnect() end); U.ti.conn = nil end
+    for _, data in pairs(U.ti.indicators) do if data.icon then data.icon:Destroy() end end
+    U.ti.indicators = {}
+    if U.ti.gui then U.ti.gui:Destroy(); U.ti.gui = nil end
+end
+U.eh = U.State.enrageHud
+U.ehEnsureGui = function()
+    if U.eh.gui then return U.eh.gui end
+    local pg = U.LP:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "Ultimatum_EnrageHud"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.DisplayOrder = 99
+    sg.Parent = pg
+    U.eh.gui = sg
+    local ef = Instance.new("Frame")
+    ef.Name = "EnrageFrame"
+    ef.Size = UDim2.new(0, 220, 0, 34)
+    ef.Position = UDim2.new(1, -240, 1, -80)
+    ef.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    ef.BackgroundTransparency = 0.25
+    ef.BorderSizePixel = 0
+    ef.Visible = false
+    ef.Parent = sg
+    local ec = Instance.new("UICorner"); ec.CornerRadius = UDim.new(0, 6); ec.Parent = ef
+    local el = Instance.new("TextLabel")
+    el.Size = UDim2.new(1, 0, 1, 0)
+    el.BackgroundTransparency = 1
+    el.Text = "Circle Enrage: 0%"
+    el.TextColor3 = Color3.fromRGB(255, 200, 100)
+    el.Font = Enum.Font.GothamBold
+    el.TextSize = 15
+    el.TextStrokeTransparency = 0.5
+    el.Parent = ef
+    U.eh.frame = ef
+    U.eh.label = el
+    return sg
+end
+U.ehShowNotification = function(text)
+    local pg = U.LP:FindFirstChild("PlayerGui")
+    if not pg then return end
+    local sg = pg:FindFirstChild("Ultimatum_Notification")
+    if not sg then
+        sg = Instance.new("ScreenGui")
+        sg.Name = "Ultimatum_Notification"
+        sg.ResetOnSpawn = false
+        sg.IgnoreGuiInset = true
+        sg.DisplayOrder = 200
+        sg.Parent = pg
+    end
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0, 420, 0, 54)
+    lbl.Position = UDim2.new(0.5, -210, 0.15, 0)
+    lbl.BackgroundColor3 = Color3.fromRGB(40, 0, 0)
+    lbl.BackgroundTransparency = 0.2
+    lbl.BorderSizePixel = 0
+    lbl.Text = text
+    lbl.TextColor3 = Color3.fromRGB(255, 100, 100)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 22
+    lbl.TextStrokeTransparency = 0.3
+    lbl.Parent = sg
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = lbl
+    local startTime = os.clock()
+    task.spawn(function()
+        while os.clock() - startTime < 3 do
+            local t = (os.clock() - startTime) / 3
+            lbl.BackgroundTransparency = 0.2 + t * 0.6
+            lbl.TextTransparency = t
+            lbl.TextStrokeTransparency = 0.3 + t * 0.7
+            task.wait(0.03)
+        end
+        lbl:Destroy()
+    end)
+end
+U.ehFindCircle = function()
+    local f = workspace:FindFirstChild("Teachers")
+    if f then
+        for _, m in ipairs(f:GetChildren()) do
+            if m:IsA("Model") and m:GetAttribute("TeacherName") == "Circle" then return m end
+        end
+    end
+    return nil
+end
+U.ehStartWatcher = function()
+    if U.eh.watcherThread then return end
+    U.eh.watcherThread = task.spawn(function()
+        while true do
+            if U.eh.enabled then
+                local circle = U.ehFindCircle()
+                if circle and U.eh.frame and U.eh.frame.Parent then
+                    local amount = circle:GetAttribute("EnragedAmount") or 0
+                    local enraged = circle:GetAttribute("Enraged") == true
+                    U.eh.frame.Visible = true
+                    U.eh.label.Text = "Circle Enrage: " .. math.floor(amount) .. "%"
+                    if enraged then
+                        U.eh.label.TextColor3 = Color3.fromRGB(255, 50, 50)
+                        if not U.eh.lastEnraged then U.ehShowNotification("Circle is ENRAGED!") end
+                    else
+                        U.eh.label.TextColor3 = Color3.fromRGB(255, 200, 100)
+                    end
+                    U.eh.lastEnraged = enraged
+                else
+                    if U.eh.frame then U.eh.frame.Visible = false end
+                    U.eh.lastEnraged = false
+                end
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+U.ehStart = function()
+    U.eh.enabled = true
+    U.ehEnsureGui()
+    U.ehStartWatcher()
+end
+U.ehStop = function()
+    U.eh.enabled = false
+    if U.eh.frame then U.eh.frame.Visible = false end
+    U.eh.lastEnraged = false
+    if U.eh.gui then
+        U.eh.gui:Destroy()
+        U.eh.gui = nil
+        U.eh.frame = nil
+        U.eh.label = nil
+    end
+end
+
+U.vh = U.State.vh
+U.vhGetTargetRoot = function(model)
+    if not model then return nil end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    return (hum and hum.RootPart) or model:FindFirstChild("HumanoidRootPart"), hum
+end
+U.vhIsSameTeam = function(model)
+    if model == U.getChar() then return true end
+    local char = U.getChar()
+    if not char then return false end
+    for _, name in ipairs({"Teachers","Students","Alices"}) do
+        local f = workspace:FindFirstChild(name)
+        if f and char:IsDescendantOf(f) and model:IsDescendantOf(f) then return true end
+    end
+    return false
+end
+U.vhCollectCandidates = function()
+    local list, seen = {}, {}
+    local function add(model)
+        if not model or seen[model] or not model:IsA("Model") then return end
+        if model == U.getChar() then return end
+        local hrp, hum = U.vhGetTargetRoot(model)
+        if not hrp or not hum or hum.Health <= 0 then return end
+        if U.vhIsSameTeam(model) then return end
+        seen[model] = true
+        table.insert(list, model)
+    end
+    for _, plr in ipairs(U.Players:GetPlayers()) do
+        if plr ~= U.LP and plr.Character then add(plr.Character) end
+    end
+    for _, folder in ipairs(U.getEnemyFolders()) do
+        for _, m in ipairs(folder:GetChildren()) do add(m) end
+    end
+    if #list == 0 then
+        for _, m in ipairs(workspace:GetChildren()) do
+            if m:IsA("Model") then add(m)
+            elseif m:IsA("Folder") then
+                for _, c in ipairs(m:GetChildren()) do
+                    if c:IsA("Model") then add(c) end
+                end
+            end
+        end
+    end
+    return list
+end
+U.vhFindNearest = function()
+    local hrp = U.getRoot()
+    if not hrp then return nil end
+    local myPos = hrp.Position
+    local look = hrp.CFrame.LookVector
+    look = Vector3.new(look.X, 0, look.Z)
+    if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) end
+    look = look.Unit
+    local best, bestDist = nil, math.huge
+    for _, model in ipairs(U.vhCollectCandidates()) do
+        local targetHrp = U.vhGetTargetRoot(model)
+        if targetHrp then
+            local delta = targetHrp.Position - myPos
+            local dist = delta.Magnitude
+            if dist <= U.Config.VelocityHitbox.range then
+                local dir = Vector3.new(delta.X, 0, delta.Z)
+                if dir.Magnitude > 0.01 then
+                    dir = dir.Unit
+                    local angle = math.deg(math.acos(math.clamp(look:Dot(dir), -1, 1)))
+                    if angle <= U.Config.VelocityHitbox.fov / 2 and dist < bestDist then
+                        bestDist = dist
+                        best = model
+                    end
+                end
+            end
+        end
+    end
+    return best, bestDist
+end
+U.vhIsSwinging = function()
+    local char = U.getChar()
+    if not char then return false end
+    if char:GetAttribute("Attacking") == true or char:GetAttribute("Swinging") == true then return true end
+    local hum = U.getHum()
+    local animator = (hum and hum:FindFirstChildOfClass("Animator")) or char:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            local name = (track.Animation and track.Animation.Name) or ""
+            local l = name:lower()
+            if l:find("swing") or l:find("attack") or l:find("slash") or l:find("m1") then return true end
+        end
+    end
+    for _, s in ipairs(char:GetDescendants()) do
+        if s:IsA("Sound") and s.Playing then
+            local l = s.Name:lower()
+            if l:find("swing") or l:find("slash") then return true end
+        end
+    end
+    return false
+end
+U.vhHideSelf = function()
+    if not U.Config.VelocityHitbox.hideSelf then return end
+    local char = U.getChar()
+    if not char then return end
+    U.vh.hiddenParts = {}
+    for _, d in ipairs(char:GetDescendants()) do
+        if d:IsA("BasePart") then
+            U.vh.hiddenParts[d] = d.LocalTransparencyModifier
+            d.LocalTransparencyModifier = 1
+        elseif d:IsA("Decal") or d:IsA("Texture") then
+            U.vh.hiddenParts[d] = d.Transparency
+            d.Transparency = 1
+        end
+    end
+end
+U.vhShowSelf = function()
+    for obj, old in pairs(U.vh.hiddenParts) do
+        if obj and obj.Parent then
+            if obj:IsA("BasePart") then
+                obj.LocalTransparencyModifier = old
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = old
+            end
+        end
+    end
+    U.vh.hiddenParts = {}
+end
+U.vhCreateLunge = function(hrp, direction, speed)
+    if U.vh.currentLunge then
+        pcall(function() U.vh.currentLunge:Destroy() end)
+        U.vh.currentLunge = nil
+    end
+    local attach = hrp:FindFirstChild("VelocityHitboxAttachment")
+    if not attach then
+        attach = Instance.new("Attachment")
+        attach.Name = "VelocityHitboxAttachment"
+        attach.Parent = hrp
+    end
+    local lv = Instance.new("LinearVelocity")
+    lv.Name = "VelocityHitboxLV"
+    lv.Attachment0 = attach
+    lv.VectorVelocity = direction * speed
+    lv.MaxForce = 100000
+    lv.ForceLimitMode = Enum.ForceLimitMode.Magnitude
+    lv.ForceLimitsEnabled = true
+    lv.RelativeTo = Enum.ActuatorRelativeTo.World
+    lv.Parent = hrp
+    U.vh.currentLunge = lv
+    return lv
+end
+U.vhRemoveLunge = function()
+    if U.vh.currentLunge then
+        pcall(function() U.vh.currentLunge:Destroy() end)
+        U.vh.currentLunge = nil
+    end
+    local hrp = U.getRoot()
+    if hrp then
+        local attach = hrp:FindFirstChild("VelocityHitboxAttachment")
+        if attach then pcall(function() attach:Destroy() end) end
+    end
+end
+U.vhFire = function(targetModel)
+    if U.vh.running or not U.Config.VelocityHitbox.enabled then return end
+    local hrp = U.getRoot()
+    if not hrp or not hrp.Parent then return end
+    if not targetModel then targetModel = U.vhFindNearest() end
+    if not targetModel then return end
+    local targetHrp = U.vhGetTargetRoot(targetModel)
+    if not targetHrp then return end
+    local startDelta = targetHrp.Position - hrp.Position
+    if startDelta.Magnitude <= U.Config.VelocityHitbox.stopDist then return end
+    U.vh.running = true
+    local startPos = hrp.Position
+    local startTime = tick()
+    local savedVel = hrp.AssemblyLinearVelocity
+    if U.Config.VelocityHitbox.hideSelf then U.vhHideSelf() end
+    task.spawn(function()
+        if U.Config.VelocityHitbox.mode == "Forward" then
+            local look = hrp.CFrame.LookVector
+            look = Vector3.new(look.X, 0, look.Z)
+            if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) end
+            look = look.Unit
+            local shake = Vector3.new(
+                (math.random()-0.5) * 2 * U.Config.VelocityHitbox.shake, 0,
+                (math.random()-0.5) * 2 * U.Config.VelocityHitbox.shake
+            )
+            local dir = (look + shake * 0.02).Unit
+            if U.Config.VelocityHitbox.useLinearVelocity then
+                U.vhCreateLunge(hrp, dir, U.Config.VelocityHitbox.speed)
+                task.wait(U.Config.VelocityHitbox.duration)
+                U.vhRemoveLunge()
+            else
+                hrp.AssemblyLinearVelocity = dir * U.Config.VelocityHitbox.speed + shake * 0.5
+                task.wait(U.Config.VelocityHitbox.duration)
+                if hrp and hrp.Parent then hrp.AssemblyLinearVelocity = savedVel end
+            end
+            U.vh.running = false
+            if U.Config.VelocityHitbox.hideSelf then U.vhShowSelf() end
+            return
+        end
+        if U.Config.VelocityHitbox.mode == "Magnetic" then
+            local currentTargetHrp = targetHrp
+            while tick() - startTime < U.Config.VelocityHitbox.duration do
+                if not U.Config.VelocityHitbox.enabled then break end
+                if not hrp or not hrp.Parent then break end
+                if not currentTargetHrp or not currentTargetHrp.Parent then
+                    local newT = U.vhFindNearest()
+                    if newT then currentTargetHrp = U.vhGetTargetRoot(newT) end
+                    if not currentTargetHrp or not currentTargetHrp.Parent then break end
+                end
+                local elapsed = tick() - startTime
+                local delta = currentTargetHrp.Position - hrp.Position
+                local distTo = delta.Magnitude
+                if distTo <= U.Config.VelocityHitbox.stopDist then break end
+                local traveled = (hrp.Position - startPos).Magnitude
+                if traveled >= U.Config.VelocityHitbox.maxTravel then break end
+                local horiz = Vector3.new(delta.X, 0, delta.Z)
+                if horiz.Magnitude > 0.1 then
+                    horiz = horiz.Unit
+                    local speedFactor = math.clamp(1 - (elapsed / U.Config.VelocityHitbox.duration), 0, 1)
+                    speedFactor = speedFactor * speedFactor
+                    local speed = (U.Config.VelocityHitbox.speed + distTo * 1.5) * speedFactor
+                    local stepCap = math.max((U.Config.VelocityHitbox.maxTravel - traveled) * 12, 5)
+                    hrp.AssemblyLinearVelocity = horiz * math.min(speed, stepCap)
+                end
+                U.RunService.Heartbeat:Wait()
+            end
+            if hrp and hrp.Parent then hrp.AssemblyLinearVelocity = savedVel end
+            U.vh.running = false
+            if U.Config.VelocityHitbox.hideSelf then U.vhShowSelf() end
+            return
+        end
+        if U.Config.VelocityHitbox.mode == "Impulse" then
+            local look = hrp.CFrame.LookVector
+            look = Vector3.new(look.X, 0, look.Z).Unit
+            local shake = Vector3.new(
+                (math.random()-0.5) * 2 * U.Config.VelocityHitbox.shake,
+                (math.random()-0.5) * U.Config.VelocityHitbox.shake,
+                (math.random()-0.5) * 2 * U.Config.VelocityHitbox.shake
+            )
+            hrp.AssemblyLinearVelocity = look * U.Config.VelocityHitbox.speed + shake
+            task.wait(U.Config.VelocityHitbox.duration)
+            if hrp and hrp.Parent then hrp.AssemblyLinearVelocity = savedVel end
+            U.vh.running = false
+            if U.Config.VelocityHitbox.hideSelf then U.vhShowSelf() end
+            return
+        end
+    end)
+end
+U.vhInstallHeartbeat = function()
+    if U.vh.heartbeatConn then return end
+    U.vh.heartbeatConn = U.RunService.Heartbeat:Connect(function()
+        if not U.Config.VelocityHitbox.enabled or U.vh.running then return end
+        if not U.Config.VelocityHitbox.autoOnSwing then return end
+        local char = U.getChar()
+        local hrp = U.getRoot()
+        if not char or not hrp or not hrp.Parent then return end
+        if not U.vhIsSwinging() then U.vh.swingFired = false; return end
+        if U.vh.swingFired then return end
+        if tick() - U.vh.lastSwingTime < U.Config.VelocityHitbox.cooldown then return end
+        local target = U.vhFindNearest()
+        if target then
+            U.vh.swingFired = true
+            U.vh.lastSwingTime = tick()
+            U.vhFire(target)
+        end
+    end)
+end
+U.vhInstallInput = function()
+    if U.vh.inputConn then return end
+    U.vh.inputConn = U.UIS.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if not U.Config.VelocityHitbox.enabled then return end
+        if input.KeyCode == U.Config.VelocityHitbox.manualKey then U.vhFire() end
+    end)
+    if U.vh.mouseConn then return end
+    U.vh.mouseConn = U.UIS.InputBegan:Connect(function(input, processed)
+        if processed then return end
+        if not U.Config.VelocityHitbox.enabled then return end
+        if not U.Config.VelocityHitbox.autoOnSwing then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+           and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        if U.vh.running then return end
+        if tick() - U.vh.lastSwingTime < U.Config.VelocityHitbox.cooldown then return end
+        local target = U.vhFindNearest()
+        if target then
+            U.vh.swingFired = true
+            U.vh.lastSwingTime = tick()
+            U.vhFire(target)
+        end
+    end)
+end
+U.vhStart = function() U.vhInstallHeartbeat(); U.vhInstallInput() end
+U.vhStop = function()
+    if U.vh.heartbeatConn then pcall(function() U.vh.heartbeatConn:Disconnect() end); U.vh.heartbeatConn = nil end
+    if U.vh.inputConn then pcall(function() U.vh.inputConn:Disconnect() end); U.vh.inputConn = nil end
+    if U.vh.mouseConn then pcall(function() U.vh.mouseConn:Disconnect() end); U.vh.mouseConn = nil end
+    U.vhRemoveLunge()
+    U.vhShowSelf()
+    U.vh.running = false
+end
+
+U.antiProjEvents = require(U.RS:WaitForChild("Network"):WaitForChild("Events"))
+U.replicateBlade = U.antiProjEvents.Teacher.ReplicateBlade:Client()
+U.antiProjPredictClosest = function(projPos, projVel, myPos)
+    local relPos = myPos - projPos
+    local relVel = projVel
+    if relVel.Magnitude < 0.1 then return nil end
+    local timeToClosest = relPos:Dot(relVel) / (relVel.Magnitude ^ 2)
+    if timeToClosest < 0 then return nil end
+    local closestPos = projPos + relVel * timeToClosest
+    local closestDist = (closestPos - myPos).Magnitude
+    return timeToClosest, closestDist, closestPos
+end
+U.antiProjFindSafeSpot = function(myRoot, projectileVel, projectilePos)
+    if not myRoot then return nil end
+    local myPos = myRoot.Position
+    local flatVel = Vector3.new(projectileVel.X, 0, projectileVel.Z)
+    if flatVel.Magnitude < 0.1 then flatVel = Vector3.new(1, 0, 0) end
+    flatVel = flatVel.Unit
+    local side = flatVel:Cross(Vector3.new(0, 1, 0))
+    if side.Magnitude < 0.1 then side = Vector3.new(1, 0, 0) end
+    side = side.Unit
+    local d = U.Config.AntiProj.dodgeDistance
+    local candidates
+    if U.Config.AntiProj.perpendicularOnly then
+        candidates = {
+            myPos + side * d, myPos - side * d,
+            myPos + side * d + Vector3.new(0, 2, 0), myPos - side * d + Vector3.new(0, 2, 0),
+            myPos + side * (d * 1.5), myPos - side * (d * 1.5),
+            myPos + side * d * 0.75 + flatVel * (d * 0.4),
+            myPos - side * d * 0.75 + flatVel * (d * 0.4),
+        }
+    else
+        candidates = {
+            myPos + side * d, myPos - side * d,
+            myPos + side * d - flatVel * (d * 0.5), myPos - side * d - flatVel * (d * 0.5),
+            myPos + side * (d * 1.2), myPos - side * (d * 1.2),
+            myPos - flatVel * d,
+            myPos + side * d + Vector3.new(0, 3, 0), myPos - side * d + Vector3.new(0, 3, 0),
+        }
+    end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { U.getChar() }
+    for _, candidate in ipairs(candidates) do
+        local dir = candidate - myPos
+        local dist = dir.Magnitude
+        if dist > 0.1 then
+            local newDistToProj = projectilePos and (candidate - projectilePos).Magnitude or math.huge
+            local oldDistToProj = projectilePos and (myPos - projectilePos).Magnitude or math.huge
+            local isSafe = true
+            if U.Config.AntiProj.perpendicularOnly and newDistToProj < oldDistToProj then isSafe = false end
+            if isSafe then
+                local hit = workspace:Raycast(myPos, dir.Unit * dist, params)
+                if not hit then
+                    local downHit = workspace:Raycast(candidate, Vector3.new(0, -30, 0), params)
+                    if downHit then return candidate end
+                end
+            end
+        end
+    end
+    return nil
+end
+U.antiProjDoDodge = function(proj)
+    local now = os.clock()
+    if now - U.State.antiProj.lastDodge < U.Config.AntiProj.dodgeCooldown then return false end
+    local myRoot = U.getRoot()
+    if not myRoot then return false end
+    local safeSpot = U.antiProjFindSafeSpot(myRoot, proj.Velocity or Vector3.new(1, 0, 0), proj.Position)
+    if not safeSpot then
+        local flatVel = Vector3.new((proj.Velocity or Vector3.new(1, 0, 0)).X, 0, (proj.Velocity or Vector3.new(1, 0, 0)).Z)
+        if flatVel.Magnitude < 0.1 then flatVel = Vector3.new(1, 0, 0) end
+        local fallbackSide = flatVel.Unit:Cross(Vector3.new(0, 1, 0))
+        if fallbackSide.Magnitude < 0.1 then fallbackSide = Vector3.new(1, 0, 0) end
+        safeSpot = myRoot.Position + fallbackSide.Unit * U.Config.AntiProj.dodgeDistance
+    end
+    U.State.antiProj.lastDodge = now
+    U.State.antiProj.dodgeCount = U.State.antiProj.dodgeCount + 1
+    U.State.antiProj.dodgedIds[proj.Id] = now
+    local savedVel = myRoot.AssemblyLinearVelocity
+    myRoot.CFrame = CFrame.new(safeSpot, safeSpot + myRoot.CFrame.LookVector)
+    myRoot.AssemblyLinearVelocity = savedVel
+    return true
+end
+U.replicateBlade:On(function(action, ...)
+    if not U.State.antiProj.enabled or U.State.antiProj.unloaded then return end
+    if action == "Create" or action == true then
+        local arg = ...
+        local list = {}
+        if type(arg) == "table" then
+            if arg.Id then table.insert(list, arg)
+            else
+                for _, p in ipairs(arg) do
+                    if type(p) == "table" and p.Id then table.insert(list, p) end
+                end
+            end
+        end
+        for _, p in ipairs(list) do
+            if p.Owner ~= U.LP.Name and p.Owner ~= U.LP then
+                local proj = {
+                    Id = p.Id, Owner = p.Owner,
+                    Position = p.CurrentPos or p.Position,
+                    Velocity = p.Velocity, Weight = p.Weight or 0,
+                    Type = p.Type, Skin = p.Skin,
+                    Lifetime = p.Lifetime or 5,
+                    SentTime = p.SentTime or workspace:GetServerTimeNow(),
+                    SpawnTime = os.clock(),
+                }
+                U.State.antiProj.projectiles[p.Id] = proj
+            end
+        end
+    elseif action == "Destroy" then
+        local id = ...
+        U.State.antiProj.projectiles[id] = nil
+    end
+end)
+U.antiProjUpdateConn = U.RunService.Heartbeat:Connect(function()
+    if not U.State.antiProj.enabled or U.State.antiProj.unloaded then return end
+    local myRoot = U.getRoot()
+    if not myRoot then return end
+    local myPos = myRoot.Position
+    local now = os.clock()
+    local ping = U.getPing()
+    for id, proj in pairs(U.State.antiProj.projectiles) do
+        local elapsed = now - proj.SpawnTime
+        if elapsed > proj.Lifetime + 1 then
+            U.State.antiProj.projectiles[id] = nil
+        else
+            local serverElapsed = workspace:GetServerTimeNow() - proj.SentTime
+            local gravity = Vector3.new(0, -1, 0) * proj.Weight
+            local realPos = proj.Position + proj.Velocity * serverElapsed + gravity * 0.5 * serverElapsed * serverElapsed
+            local currentVel = proj.Velocity + gravity * serverElapsed
+            if U.Config.AntiProj.autoDodge then
+                local lastDodged = U.State.antiProj.dodgedIds[id]
+                if not lastDodged or now - lastDodged > 1.5 then
+                    local predictedPos = realPos + currentVel * ping
+                    local t, dist = U.antiProjPredictClosest(predictedPos, currentVel, myPos)
+                    if t and t > 0 and t < U.Config.AntiProj.dodgeTime and dist < U.Config.AntiProj.hitRadius then
+                        U.antiProjDoDodge(proj)
+                    end
+                end
+            end
+        end
+    end
+end)
+U.State.antiProj.connections.update = U.antiProjUpdateConn
+
+U.thavelUpdatePounce = U.antiProjEvents.Teacher.UpdatePounceState:Client()
+U.ThavelInfo = nil
+pcall(function() U.ThavelInfo = require(U.RS.Shared.TeacherStats.ThavelInfo) end)
+U.thavelIsOurs = function()
+    local char = U.getChar()
+    if not char then return false end
+    return char:GetAttribute("TeacherName") == "Thavel"
+end
+U.thavelIsVisible = function(part)
+    if not U.Config.ThavelAimbot.aimVisibleCheck then return true end
+    local camera = U.getCamera()
+    local origin = camera.CFrame.Position
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {U.getChar(), camera}
+    local result = workspace:Raycast(origin, part.Position - origin, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(part.Parent)
+end
+U.thavelGetAimPartModel = function(model)
+    if not model then return nil end
+    return model:FindFirstChild(U.Config.ThavelAimbot.aimTargetPart)
+        or model:FindFirstChild("Head")
+        or model:FindFirstChild("HumanoidRootPart")
+end
+U.thavelFindAimTarget = function()
+    local camera = U.getCamera()
+    local closest, closestScore = nil, math.huge
+    for _, model in ipairs(U.collectTeacherAimModels()) do
+        local part = U.thavelGetAimPartModel(model)
+        if part then
+            local dist = (part.Position - camera.CFrame.Position).Magnitude
+            if dist <= U.Config.ThavelAimbot.maxDistance then
+                local _, onScreen = camera:WorldToScreenPoint(part.Position)
+                if onScreen and U.thavelIsVisible(part) then
+                    if dist < closestScore then closestScore = dist; closest = model end
+                end
+            end
+        end
+    end
+    return closest
+end
+U.thavelPredictPosition = function(part)
+    return part.Position + (part.AssemblyLinearVelocity or Vector3.zero) * U.getPing()
+end
+U.thavelGetAimCFrame = function()
+    if not U.State.thavel.aimTarget then return nil end
+    local thavel = U.getChar()
+    if not thavel then return nil end
+    local thavelRoot = thavel:FindFirstChild("HumanoidRootPart")
+    if not thavelRoot then return nil end
+    local part = U.thavelGetAimPartModel(U.State.thavel.aimTarget)
+    if not part then return nil end
+    local targetPos = U.thavelPredictPosition(part)
+    return CFrame.new(thavelRoot.Position, targetPos)
+end
+U.thavelExtractLookVector = function(lv)
+    if not lv then return nil end
+    if typeof(lv) == "CFrame" then return lv.LookVector
+    elseif typeof(lv) == "Vector3" then return lv end
+    return nil
+end
+U.thavelClearVisuals = function()
+    for _, p in pairs(U.State.thavel.trajectoryParts) do pcall(function() p:Destroy() end) end
+    for _, p in pairs(U.State.thavel.hitboxParts) do pcall(function() p:Destroy() end) end
+    U.State.thavel.trajectoryParts = {}
+    U.State.thavel.hitboxParts = {}
+end
+U.thavelDrawTrajectory = function(thavel)
+    U.thavelClearVisuals()
+    if not U.Config.ThavelAimbot.showTrajectory or not thavel then return end
+    local root = thavel:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local lookVector = U.thavelExtractLookVector(thavel:GetAttribute("PounceLookVector"))
+    if not lookVector or lookVector.Magnitude < 0.01 then return end
+    local startPos = root.Position
+    local direction = lookVector.Unit
+    local chargeSpeed, hitboxSize = 100, Vector3.new(6, 8, 11.5)
+    if U.ThavelInfo and U.ThavelInfo.Movesets and U.ThavelInfo.Movesets.Pounce then
+        chargeSpeed = U.ThavelInfo.Movesets.Pounce.ChargeSpeed or chargeSpeed
+        hitboxSize = U.ThavelInfo.Movesets.Pounce.HitboxSize or hitboxSize
+    end
+    local maxTime = 1.5
+    local totalLength = math.min(chargeSpeed * maxTime, U.Config.ThavelAimbot.maxDistance)
+    local line = Instance.new("Part")
+    line.Name = "ThavelTrajectory"
+    line.Size = Vector3.new(0.4, 0.4, totalLength)
+    line.Anchored = true
+    line.CanCollide = false
+    line.CanQuery = false
+    line.CanTouch = false
+    line.Material = Enum.Material.Neon
+    line.Color = U.Config.ThavelAimbot.trajectoryColor
+    line.Transparency = 0.2
+    line.CFrame = CFrame.new(startPos, startPos + direction) * CFrame.new(0, 0, -totalLength / 2)
+    line.Parent = workspace
+    table.insert(U.State.thavel.trajectoryParts, line)
+    if U.Config.ThavelAimbot.showHitbox then
+        for i = 1, 6 do
+            local t = (i / 6) * maxTime
+            local pos = startPos + direction * (chargeSpeed * t)
+            local hb = Instance.new("Part")
+            hb.Name = "ThavelHitboxPreview"
+            hb.Size = hitboxSize
+            hb.Anchored = true
+            hb.CanCollide = false
+            hb.CanQuery = false
+            hb.CanTouch = false
+            hb.Material = Enum.Material.ForceField
+            hb.Color = U.Config.ThavelAimbot.hitboxColor
+            hb.Transparency = 0.85
+            hb.CFrame = CFrame.new(pos) * CFrame.new(0, 0, hitboxSize.Z * -0.375)
+            hb.Parent = workspace
+            table.insert(U.State.thavel.hitboxParts, hb)
+        end
+    end
+end
+U.thavelAimAtTarget = function(target)
+    if not target then return end
+    local part = U.thavelGetAimPartModel(target)
+    if not part then return end
+    local camera = U.getCamera()
+    local targetPos = U.thavelPredictPosition(part)
+    local currentPos = camera.CFrame.Position
+    if U.Config.ThavelAimbot.aimSmoothness >= 1 then
+        camera.CFrame = CFrame.new(currentPos, targetPos)
+    else
+        local newLook = camera.CFrame.LookVector:Lerp((targetPos - currentPos).Unit, U.Config.ThavelAimbot.aimSmoothness)
+        camera.CFrame = CFrame.new(currentPos, currentPos + newLook)
+    end
+end
+U.thavelGetThavel = function()
+    local f = workspace:FindFirstChild("Teachers")
+    if f then
+        for _, m in ipairs(f:GetChildren()) do
+            if m:IsA("Model") and m:GetAttribute("TeacherName") == "Thavel" then
+                local h = m:FindFirstChildOfClass("Humanoid")
+                if h and h.Health > 0 then return m end
+            end
+        end
+    end
+    return nil
+end
+U.thavelInstallHook = function()
+    if U.State.thavel.hookInstalled then return end
+    if not U.Config.ThavelAimbot.hookEnabled then return end
+    
+    local ok = pcall(function()
+        local mt = getrawmetatable(game)
+        if not mt then error("no mt") end
+        local old = mt.__namecall
+        if not old then error("no nc") end
+        U.State.thavel.originalNamecall = old
+        setreadonly(mt, false)
+        mt.__namecall = newcclosure(function(self, ...)
+            if getnamecallmethod() == "FireServer"
+               and U.State.thavel.aimTarget
+               and U.Config.ThavelAimbot.aimbot
+               and U.Config.ThavelAimbot.hookEnabled
+               and U.thavelIsOurs() then
+                local args = {...}
+                local modified = false
+                for i, a in ipairs(args) do
+                    if typeof(a) == "CFrame" then
+                        local aimCF = U.thavelGetAimCFrame()
+                        if aimCF then args[i] = aimCF; modified = true end
+                    end
+                end
+                if modified then return old(self, table.unpack(args)) end
+            end
+            return old(self, ...)
+        end)
+        setreadonly(mt, true)
+    end)
+    if ok then U.State.thavel.hookInstalled = true
+    else
+        pcall(function()
+            if not hookmetamethod then error("no hm") end
+            local old
+            old = hookmetamethod(game, "__namecall", function(self, ...)
+                if getnamecallmethod() == "FireServer"
+                   and U.State.thavel.aimTarget
+                   and U.Config.ThavelAimbot.aimbot
+                   and U.Config.ThavelAimbot.hookEnabled
+                   and U.thavelIsOurs() then
+                    local args = {...}
+                    local modified = false
+                    for i, a in ipairs(args) do
+                        if typeof(a) == "CFrame" then
+                            local aimCF = U.thavelGetAimCFrame()
+                            if aimCF then args[i] = aimCF; modified = true end
+                        end
+                    end
+                    if modified then return old(self, table.unpack(args)) end
+                end
+                return old(self, ...)
+            end)
+            U.State.thavel.originalNamecall = old
+            U.State.thavel.hookInstalled = true
+        end)
+    end
+end
+
+U.thavelUninstallHook = function()
+    if not U.State.thavel.hookInstalled or not U.State.thavel.originalNamecall then return end
+    pcall(function()
+        local mt = getrawmetatable(game)
+        if mt then
+            setreadonly(mt, false)
+            mt.__namecall = U.State.thavel.originalNamecall
+            setreadonly(mt, true)
+        end
+    end)
+    U.State.thavel.hookInstalled = false
+end
+-- 优化：取消全局直接绑定，改为开启功能时才绑定（见下方 U.thavelSetup 函数）
+U.State.thavel.connections = {}
+U.State.thavel.renderConn = nil
+U.State.thavel.heartbeatConn = nil
+U.State.thavel.pounceConn = nil
+
+U.thavelSetup = function()
+    if U.State.thavel.renderConn then return end
+    
+    U.State.thavel.pounceConn = U.thavelUpdatePounce:On(function(active, parent, lookVector)
+        if not U.State.thavel.enabled or U.State.thavel.unloaded then return end
+        if not U.thavelIsOurs() then return end
+        if not parent or parent == U.getChar() then return end
+        if active then
+            parent:SetAttribute("PounceLookVector", lookVector)
+            if U.Config.ThavelAimbot.aimbot and U.Config.ThavelAimbot.autoAimOnPounce then
+                local target = U.thavelFindAimTarget()
+                if target then U.State.thavel.aimTarget = target; U.thavelAimAtTarget(target) end
+            end
+        else
+            parent:SetAttribute("PounceLookVector", nil)
+            U.thavelClearVisuals()
+        end
+    end)
+
+    U.State.thavel.renderConn = U.RunService.RenderStepped:Connect(function()
+        if not U.State.thavel.enabled or U.State.thavel.unloaded then return end
+        if not U.Config.ThavelAimbot.hookEnabled or not U.Config.ThavelAimbot.aimbot then
+            U.State.thavel.aimTarget = nil
+            return
+        end
+        if not U.thavelIsOurs() then U.State.thavel.aimTarget = nil; return end
+        local thavel = U.thavelGetThavel()
+        if not thavel or thavel:GetAttribute("Charging") ~= true then U.State.thavel.aimTarget = nil; return end
+        local target = U.thavelFindAimTarget()
+        U.State.thavel.aimTarget = target
+        if target then U.thavelAimAtTarget(target) end
+    end)
+
+    U.State.thavel.heartbeatConn = U.RunService.Heartbeat:Connect(function()
+        if not U.State.thavel.enabled or U.State.thavel.unloaded then return end
+        if not U.thavelIsOurs() or not U.Config.ThavelAimbot.predictor then return end
+        local now = os.clock()
+        if now - U.State.thavel.lastTrajectoryUpdate < 0.05 then return end
+        U.State.thavel.lastTrajectoryUpdate = now
+        local thavel = U.thavelGetThavel()
+        if thavel and thavel:GetAttribute("PounceLookVector") then pcall(U.thavelDrawTrajectory, thavel) end
+    end)
+end
+
+U.thavelCleanup = function()
+    if U.State.thavel.pounceConn then pcall(function() U.State.thavel.pounceConn:Disconnect() end); U.State.thavel.pounceConn = nil end
+    if U.State.thavel.renderConn then pcall(function() U.State.thavel.renderConn:Disconnect() end); U.State.thavel.renderConn = nil end
+    if U.State.thavel.heartbeatConn then pcall(function() U.State.thavel.heartbeatConn:Disconnect() end); U.State.thavel.heartbeatConn = nil end
+    U.State.thavel.aimTarget = nil
+    U.thavelClearVisuals()
+end
+
+U.m1AimHasLineOfSight = function(fromPos, targetPart)
+    if not U.Config.M1Aim.wallCheck then return true end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {U.getChar(), targetPart.Parent, targetPart}
+    local result = workspace:Raycast(fromPos, targetPart.Position - fromPos, params)
+    if not result then return true end
+    return result.Instance:IsDescendantOf(targetPart.Parent)
+end
+U.m1AimFindTarget = function()
+    local root = U.getRoot()
+    if not root then return nil end
+    local myPos = root.Position
+    local folders = U.getEnemyFolders()
+    if #folders == 0 then return nil end
+    local best, bestDist = nil, U.Config.M1Aim.maxDistance
+    for _, folder in ipairs(folders) do
+        for _, model in ipairs(folder:GetChildren()) do
+            if model:IsA("Model") and model ~= U.getChar() then
+                local h = model:FindFirstChildOfClass("Humanoid")
+                if h and h.Health > 0 then
+                    local part = model:FindFirstChild(U.Config.M1Aim.aimPart) or model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+                    if part then
+                        local d = (part.Position - myPos).Magnitude
+                        if d < bestDist and U.m1AimHasLineOfSight(myPos, part) then
+                            bestDist = d
+                            best = part
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+U.m1AimTick = function()
+    if not U.Config.M1Aim.enabled then return end
+    if not U.isOurTeacher() then return end
+    local char = U.getChar()
+    if not char then return end
+    if U.Config.M1Aim.onlyWhileM1 then
+        local recentlyTriggered = U.State.m1Aim.lastTurn and os.clock() - U.State.m1Aim.lastTurn <= 0.15
+        local swinging = char:GetAttribute("Attacking") == true or char:GetAttribute("Swinging") == true
+        if not swinging and not recentlyTriggered then return end
+    end
+    local root = U.getRoot()
+    if not root then return end
+    local target = U.m1AimFindTarget()
+    if not target then return end
+    U.State.m1Aim.target = target
+    U.State.m1Aim.lastTurn = os.clock()
+    local fromPos = root.Position
+    local lookAt = Vector3.new(target.Position.X, fromPos.Y, target.Position.Z)
+    if (lookAt - fromPos).Magnitude < 0.1 then return end
+    if U.Config.M1Aim.snap then
+        root.CFrame = CFrame.new(fromPos, lookAt)
+    else
+        local newLook = root.CFrame.LookVector:Lerp((lookAt - fromPos).Unit, 0.35)
+        root.CFrame = CFrame.new(fromPos, fromPos + newLook)
+    end
+end
+U.m1AimSetEnabled = function(v)
+    U.Config.M1Aim.enabled = v
+    if v then
+        if not U.State.m1Aim.conn then
+            U.State.m1Aim.conn = U.RunService.RenderStepped:Connect(function() pcall(U.m1AimTick) end)
+        end
+        if not U.State.m1Aim.inputConn then
+            U.State.m1Aim.inputConn = U.UIS.InputBegan:Connect(function(input, gpe)
+                if gpe or not U.Config.M1Aim.enabled then return end
+                if not U.isOurTeacher() then return end
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                    U.State.m1Aim.lastTurn = os.clock()
+                end
+            end)
+        end
+    else
+        if U.State.m1Aim.conn then pcall(function() U.State.m1Aim.conn:Disconnect() end); U.State.m1Aim.conn = nil end
+        if U.State.m1Aim.inputConn then pcall(function() U.State.m1Aim.inputConn:Disconnect() end); U.State.m1Aim.inputConn = nil end
+    end
+end
+
+U.Unloaders = {
+    antiProj = function()
+        local s = U.State.antiProj
+        s.enabled = false; s.unloaded = true
+        for _, conn in pairs(s.connections) do pcall(function() conn:Disconnect() end) end
+        s.connections = {}; s.projectiles = {}; s.dodgedIds = {}
+    end,
+    thavel = function()
+        local s = U.State.thavel
+        s.enabled = false; s.unloaded = true
+        if s.hookInstalled then
+            pcall(function()
+                local mt = getrawmetatable(game)
+                if mt and s.originalNamecall then
+                    setreadonly(mt, false); mt.__namecall = s.originalNamecall; setreadonly(mt, true)
+                end
+            end)
+            s.hookInstalled = false
+        end
+        for _, p in pairs(s.trajectoryParts) do pcall(function() p:Destroy() end) end
+        for _, p in pairs(s.hitboxParts) do pcall(function() p:Destroy() end) end
+        s.trajectoryParts = {}; s.hitboxParts = {}
+        for _, conn in pairs(s.connections) do pcall(function() conn:Disconnect() end) end
+        s.connections = {}
+    end,
+    esp = function()
+        for _, d in pairs(U.State.espData) do U.destroyESP(d) end
+        for _, d in pairs(U.State.npcData) do U.destroyESP(d) end
+        U.State.espData = {}; U.State.npcData = {}
+    end,
+    hitbox = function()
+        if U.State.hitboxLoopConn then pcall(function() U.State.hitboxLoopConn:Disconnect() end); U.State.hitboxLoopConn = nil end
+        for _, plr in ipairs(U.Players:GetPlayers()) do
+            if plr ~= U.LP and plr.Character then U.resetHitbox(plr.Character) end
+        end
+    end,
+    anim = function() U.stopAnimation() end,
+    notebook = function()
+        if U.State.notebookHooked then pcall(function() U.State.notebookHooked:Disconnect() end); U.State.notebookHooked = nil end
+    end,
+    stamina = function()
+        for _, conn in pairs(U.State.staminaConns) do pcall(function() conn:Disconnect() end) end
+        U.State.staminaConns = {}
+    end,
+    autoBlock = function()
+        for _, conn in pairs(U.State.autoBlockFolderConns) do pcall(function() conn:Disconnect() end) end
+        for _, conn in ipairs(U.State.autoBlockDescConns) do pcall(function() conn:Disconnect() end) end
+        U.State.autoBlockFolderConns = {}; U.State.autoBlockDescConns = {}
+    end,
+    doors = function()
+        local dn = U.State.doorNoclip
+        for part, orig in pairs(dn.original) do
+            if part and part.Parent then pcall(function() part.CanCollide = orig end) end
+        end
+        dn.original = {}
+    end,
+    aliceBarrier = function()
+        U.Config.AliceBarrierNoclip.enabled = false
+        for _, conn in ipairs(U.State.aliceBarrier.connections) do pcall(function() conn:Disconnect() end) end
+        U.State.aliceBarrier.connections = {}; U.State.aliceBarrier.hooked = {}; U.State.aliceBarrier.touched = {}
+    end,
+    skins = function()
+        U.State.showAllSkins.enabled = false
+        if U.State.showAllSkins.thread then pcall(function() task.cancel(U.State.showAllSkins.thread) end); U.State.showAllSkins.thread = nil end
+    end,
+    ti = function()
+        U.ti.enabled = false
+        if U.ti.conn then pcall(function() U.ti.conn:Disconnect() end); U.ti.conn = nil end
+        for _, data in pairs(U.ti.indicators) do if data.icon then data.icon:Destroy() end end
+        U.ti.indicators = {}
+        if U.ti.gui then U.ti.gui:Destroy(); U.ti.gui = nil end
+    end,
+    eh = function()
+        U.eh.enabled = false
+        if U.eh.frame then U.eh.frame.Visible = false end
+        U.eh.lastEnraged = false
+        if U.eh.gui then U.eh.gui:Destroy(); U.eh.gui = nil; U.eh.frame = nil; U.eh.label = nil end
+    end,
+    vh = function()
+        if U.vh.heartbeatConn then pcall(function() U.vh.heartbeatConn:Disconnect() end); U.vh.heartbeatConn = nil end
+        if U.vh.inputConn then pcall(function() U.vh.inputConn:Disconnect() end); U.vh.inputConn = nil end
+        if U.vh.mouseConn then pcall(function() U.vh.mouseConn:Disconnect() end); U.vh.mouseConn = nil end
+        U.vhRemoveLunge()
+        U.vhShowSelf()
+        U.vh.running = false
+    end,
+    fov = function()
+        if U.State.fovConn then pcall(function() U.State.fovConn:Disconnect() end); U.State.fovConn = nil end
+    end,
+    camera = function()
+        if U.State.cameraConn then pcall(function() U.State.cameraConn:Disconnect() end); U.State.cameraConn = nil end
+    end,
+    m1Aim = function()
+        if U.State.m1Aim.conn then pcall(function() U.State.m1Aim.conn:Disconnect() end); U.State.m1Aim.conn = nil end
+        if U.State.m1Aim.inputConn then pcall(function() U.State.m1Aim.inputConn:Disconnect() end); U.State.m1Aim.inputConn = nil end
+    end,
+}
+
+U.ValidateConfig = function()
+    local function guard(t, k, v)
+        if type(t) ~= "table" then return end
+        if type(t[k]) ~= "number" then t[k] = v end
+    end
+    guard(U.Config.SmartSpeed, "walkBonus", 1.05)
+    guard(U.Config.SmartSpeed, "runBonus", 1.10)
+    guard(U.Config.SmartSpeed, "proximityBonus", 0.15)
+    guard(U.Config.SmartSpeed, "approachBonus", 0.10)
+    guard(U.Config.SmartSpeed, "sprintBonus", 0.08)
+    guard(U.Config.SmartSpeed, "threatBonus", 0.12)
+    guard(U.Config.SmartSpeed, "detectRange", 80)
+    guard(U.Config.SmartSpeed, "closeRange", 15)
+    guard(U.Config.SmartSpeed, "mediumRange", 30)
+    guard(U.Config.SmartSpeed, "maxWalkSpeed", 28)
+    guard(U.Config.SmartSpeed, "maxRunSpeed", 40)
+    guard(U.Config.SmartSpeed, "smoothStep", 4)
+    guard(U.Config.AutoBlock, "cooldown", 0.08)
+    guard(U.Config.AutoBlock, "radius", 38)
+    guard(U.Config.AutoBlock, "radiusY", 14)
+    guard(U.Config.AutoBlock, "facingDot", 0.0)
+    guard(U.Config.AutoBlock, "chargeDelay", 0.05)
+    guard(U.Config.ESP, "maxDistance", 1000)
+    guard(U.Config.ESP, "fillTransparency", 0.5)
+    guard(U.Config.ESP, "outlineTransparency", 0)
+    guard(U.Config.ESP, "updateInterval", 0.25)
+    guard(U.Config.Hitbox, "size", 15)
+    guard(U.Config.Hitbox, "transparency", 0.5)
+    guard(U.Config.VelocityHitbox, "range", 30)
+    guard(U.Config.VelocityHitbox, "speed", 65)
+    guard(U.Config.VelocityHitbox, "duration", 0.18)
+    guard(U.Config.VelocityHitbox, "shake", 6)
+    guard(U.Config.VelocityHitbox, "cooldown", 0.55)
+    guard(U.Config.VelocityHitbox, "stopDist", 6)
+    guard(U.Config.VelocityHitbox, "maxTravel", 25)
+    guard(U.Config.VelocityHitbox, "fov", 160)
+    guard(U.Config.ThavelAimbot, "maxDistance", 200)
+    guard(U.Config.ThavelAimbot, "aimSmoothness", 1)
+    guard(U.Config.M1Aim, "maxDistance", 30)
+    guard(U.Config.AntiProj, "dodgeDistance", 14)
+    guard(U.Config.AntiProj, "dodgeCooldown", 0.15)
+    guard(U.Config.AntiProj, "dodgeTime", 1.2)
+    guard(U.Config.AntiProj, "hitRadius", 6)
+    guard(U.Config.Aim, "maxDistance", 1000)
+    guard(U.Config.Aim, "snapStrength", 1)
+    guard(U.Config.FOV, "value", 70)
+    guard(U.Config.ThirdPerson, "minZoom", 0.5)
+    guard(U.Config.ThirdPerson, "maxZoom", 15)
+    guard(U.Config.Fullbright, "brightness", 3)
+end
+
+U.Window = U.Rayfield:CreateWindow({
+    Name = "Ultimatum Tool HUB",
+    LoadingTitle = "FPE:S",
+    LoadingSubtitle = "by Innovator",
+    Theme = "Amethyst",
+    ConfigurationSaving = { Enabled = true, FolderName = "FPE:SULTHub", FileName = "Config" },
+    Discord = { Enabled = false, Invite = "noinvitelink", RememberJoins = true },
+    KeySystem = false,
+})
+
+U.VisualTab = U.Window:CreateTab("Visual", "eye")
+U.StudentsTab = U.Window:CreateTab("Students", "users")
+U.TeachersTab = U.Window:CreateTab("Teachers", "graduation-cap")
+U.HitboxTab = U.Window:CreateTab("Hitbox", "box")
+U.AnimationsTab = U.Window:CreateTab("Animations", "play")
+U.OtherTab = U.Window:CreateTab("Other", "settings")
+
+U.VisualTab:CreateSection("ESP")
+U.VisualTab:CreateParagraph({Title = "ESP", Content = "See nearby players and NPCs through walls with name tags."})
+U.VisualTab:CreateToggle({Name = "Enable ESP", CurrentValue = false, Flag = "ESP_Enabled", Callback = function(v)
+    U.Config.ESP.enabled = v
+    if not v then U.cleanupESP() end
+end})
+U.VisualTab:CreateToggle({Name = "Show Players", CurrentValue = true, Flag = "ESP_Players", Callback = function(v) U.Config.ESP.showPlayers = v end})
+U.VisualTab:CreateToggle({Name = "Show NPCs", CurrentValue = false, Flag = "ESP_NPCs", Callback = function(v) U.Config.ESP.showNPCs = v end})
+U.VisualTab:CreateToggle({Name = "Show Names", CurrentValue = true, Flag = "ESP_Names", Callback = function(v) U.Config.ESP.showNames = v end})
+U.VisualTab:CreateToggle({Name = "Show Health", CurrentValue = true, Flag = "ESP_Health", Callback = function(v) U.Config.ESP.showHealth = v end})
+U.VisualTab:CreateToggle({Name = "Show Distance", CurrentValue = true, Flag = "ESP_Distance", Callback = function(v) U.Config.ESP.showDistance = v end})
+U.VisualTab:CreateToggle({Name = "Team Check", CurrentValue = false, Flag = "ESP_Team", Callback = function(v) U.Config.ESP.teamCheck = v end})
+U.VisualTab:CreateSlider({Name = "Max Distance", Range = {50, 5000}, Increment = 50, Suffix = " studs", CurrentValue = 1000, Flag = "ESP_MaxDist", Callback = function(v) U.Config.ESP.maxDistance = v end})
+U.VisualTab:CreateSlider({Name = "Fill Transparency", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.5, Flag = "ESP_Fill", Callback = function(v) U.Config.ESP.fillTransparency = v end})
+U.VisualTab:CreateColorPicker({Name = "Player Color", Color = Color3.fromRGB(0, 170, 255), Flag = "ESP_PlayerColor", Callback = function(c) U.Config.ESP.playerColor = c end})
+U.VisualTab:CreateColorPicker({Name = "NPC Color", Color = Color3.fromRGB(200, 200, 200), Flag = "ESP_NPCColor", Callback = function(c) U.Config.ESP.npcColor = c end})
+U.VisualTab:CreateColorPicker({Name = "Enemy Color", Color = Color3.fromRGB(255, 60, 60), Flag = "ESP_EnemyColor", Callback = function(c) U.Config.ESP.enemyColor = c end})
+
+U.VisualTab:CreateSection("Teacher Indicator")
+U.VisualTab:CreateParagraph({Title = "Teacher Indicator", Content = "A ring around your screen that points to each teacher, with their icon and distance."})
+U.VisualTab:CreateToggle({Name = "Enable Teacher Indicator", CurrentValue = false, Flag = "TI_Enabled", Callback = function(v)
+    U.Config.TeacherIndicator.enabled = v
+    if v then U.tiStart() else U.tiStop() end
+end})
+U.VisualTab:CreateSlider({Name = "Ring Radius", Range = {100, 400}, Increment = 10, Suffix = " px", CurrentValue = 220, Flag = "TI_Radius", Callback = function(v)
+    U.Config.TeacherIndicator.radius = v
+    if U.ti ~= nil then U.ti.radius = v end
+end})
+U.VisualTab:CreateSlider({Name = "Icon Size", Range = {24, 96}, Increment = 2, Suffix = " px", CurrentValue = 56, Flag = "TI_Size", Callback = function(v)
+    U.Config.TeacherIndicator.iconSize = v
+    if U.ti ~= nil then U.ti.iconSize = v end
+end})
+U.VisualTab:CreateToggle({Name = "Scale By Distance", CurrentValue = true, Flag = "TI_Scale", Callback = function(v) U.Config.TeacherIndicator.scaleByDistance = v end})
+U.VisualTab:CreateToggle({Name = "Show Distance", CurrentValue = true, Flag = "TI_Dist", Callback = function(v) U.Config.TeacherIndicator.showDistance = v end})
+U.VisualTab:CreateToggle({Name = "Show Visibility", CurrentValue = true, Flag = "TI_Vis", Callback = function(v) U.Config.TeacherIndicator.showVisibility = v end})
+
+U.VisualTab:CreateSection("Enrage HUD")
+U.VisualTab:CreateParagraph({Title = "Enrage HUD", Content = "Shows Circle's Enrage progress and alerts you when she activates it."})
+U.VisualTab:CreateToggle({Name = "Enable Enrage HUD", CurrentValue = false, Flag = "EH_Enabled", Callback = function(v)
+    U.Config.EnrageHud.enabled = v
+    if v then U.ehStart() else U.ehStop() end
+end})
+
+U.VisualTab:CreateSection("Fullbright")
+U.VisualTab:CreateParagraph({Title = "Fullbright", Content = "Brightens the map for better visibility at any time."})
+U.VisualTab:CreateToggle({Name = "Enable Fullbright", CurrentValue = false, Flag = "FB_Enabled", Callback = function(v)
+    U.Config.Fullbright.enabled = v
+    U.applyFullbright()
+end})
+U.VisualTab:CreateSlider({Name = "Brightness", Range = {1, 10}, Increment = 0.5, CurrentValue = 3, Flag = "FB_Brightness", Callback = function(v)
+    U.Config.Fullbright.brightness = v
+    if U.Config.Fullbright.enabled then U.applyFullbright() end
+end})
+
+U.VisualTab:CreateSection("FOV")
+U.VisualTab:CreateParagraph({Title = "Field of View", Content = "Custom field of view with an option to keep it locked."})
+U.VisualTab:CreateToggle({Name = "Enable FOV", CurrentValue = false, Flag = "FOV_Enabled", Callback = function(v) U.Config.FOV.enabled = v; U.applyFOV() end})
+U.VisualTab:CreateToggle({Name = "Force FOV", CurrentValue = true, Flag = "FOV_Force", Callback = function(v)
+    U.Config.FOV.forceEnabled = v
+    if U.Config.FOV.enabled then U.applyFOV() end
+end})
+U.VisualTab:CreateSlider({Name = "FOV Value", Range = {30, 160}, Increment = 1, CurrentValue = 70, Flag = "FOV_Value", Callback = function(v)
+    U.Config.FOV.value = v
+    if U.Config.FOV.enabled then U.applyFOV() end
+end})
+
+U.VisualTab:CreateSection("Third Person")
+U.VisualTab:CreateParagraph({Title = "Third Person", Content = "Classic camera mode with custom zoom limits."})
+U.VisualTab:CreateToggle({Name = "Enable Third Person", CurrentValue = false, Flag = "TP_Enabled", Callback = function(v)
+    U.Config.ThirdPerson.enabled = v
+    U.applyThirdPerson()
+end})
+U.VisualTab:CreateToggle({Name = "Force Camera", CurrentValue = true, Flag = "TP_Force", Callback = function(v)
+    U.Config.ThirdPerson.forceEnabled = v
+    if U.Config.ThirdPerson.enabled then U.applyThirdPerson() end
+end})
+U.VisualTab:CreateSlider({Name = "Min Zoom", Range = {0, 10}, Increment = 0.1, CurrentValue = 0.5, Flag = "TP_MinZoom", Callback = function(v)
+    U.Config.ThirdPerson.minZoom = v
+    if U.Config.ThirdPerson.enabled then U.applyThirdPerson() end
+end})
+U.VisualTab:CreateSlider({Name = "Max Zoom", Range = {5, 100}, Increment = 1, CurrentValue = 15, Flag = "TP_MaxZoom", Callback = function(v)
+    U.Config.ThirdPerson.maxZoom = v
+    if U.Config.ThirdPerson.enabled then U.applyThirdPerson() end
+end})
+
+U.VisualTab:CreateSection("Circle Enrage")
+U.VisualTab:CreateParagraph({Title = "No Circle Enrage", Content = "Hides the visual effects shown when Circle is enraged."})
+U.VisualTab:CreateToggle({Name = "Remove Circle Enrage Effect", CurrentValue = false, Flag = "NCE_Enabled", Callback = function(v)
+    U.Config.NoCircleEnrage.enabled = v
+    U.applyNoCircleEnrage()
+end})
+
+U.VisualTab:CreateSection("Show All Skins")
+U.VisualTab:CreateParagraph({Title = "Show All Skins", Content = "Shows all skins in the selection menu."})
+U.VisualTab:CreateToggle({Name = "Enable Show All Skins", CurrentValue = false, Flag = "SAS_Enabled", Callback = function(v)
+    if v then U.startShowAllSkins() else U.stopShowAllSkins() end
+end})
+
+U.StudentsTab:CreateSection("Smart Speed")
+U.StudentsTab:CreateParagraph({Title = "Smart Speed", Content = "Adjusts your speed based on nearby teachers and the situation."})
+U.StudentsTab:CreateToggle({Name = "Enable Smart Speed", CurrentValue = false, Flag = "SS_Enabled", Callback = function(v)
+    U.Config.SmartSpeed.enabled = v
+    if not v then local hum = U.getHum(); if hum then hum.WalkSpeed = U.getBaseSpeed() end end
+end})
+U.StudentsTab:CreateToggle({Name = "Skip If Teacher/Alice", CurrentValue = true, Flag = "SS_SkipTeacher", Callback = function(v) U.Config.SmartSpeed.skipIfTeacher = v end})
+U.StudentsTab:CreateSlider({Name = "Walk Bonus", Range = {1, 2}, Increment = 0.05, Suffix = "x", CurrentValue = 1.05, Flag = "SS_WalkBonus", Callback = function(v) U.Config.SmartSpeed.walkBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Run Bonus", Range = {1, 2}, Increment = 0.05, Suffix = "x", CurrentValue = 1.10, Flag = "SS_RunBonus", Callback = function(v) U.Config.SmartSpeed.runBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Proximity Bonus", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.15, Flag = "SS_Prox", Callback = function(v) U.Config.SmartSpeed.proximityBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Approach Bonus", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.10, Flag = "SS_Appr", Callback = function(v) U.Config.SmartSpeed.approachBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Sprint Bonus", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.08, Flag = "SS_Sprint", Callback = function(v) U.Config.SmartSpeed.sprintBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Threat Bonus", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.12, Flag = "SS_Threat", Callback = function(v) U.Config.SmartSpeed.threatBonus = v end})
+U.StudentsTab:CreateSlider({Name = "Detect Range", Range = {20, 300}, Increment = 10, Suffix = " studs", CurrentValue = 80, Flag = "SS_Detect", Callback = function(v) U.Config.SmartSpeed.detectRange = v end})
+U.StudentsTab:CreateSlider({Name = "Max Walk Speed", Range = {16, 100}, Increment = 1, CurrentValue = 28, Flag = "SS_MaxWalk", Callback = function(v) U.Config.SmartSpeed.maxWalkSpeed = v end})
+U.StudentsTab:CreateSlider({Name = "Max Run Speed", Range = {16, 200}, Increment = 1, CurrentValue = 40, Flag = "SS_MaxRun", Callback = function(v) U.Config.SmartSpeed.maxRunSpeed = v end})
+
+U.StudentsTab:CreateSection("Auto Block")
+U.StudentsTab:CreateParagraph({Title = "Auto Block", Content = "Automatically blocks when a teacher attacks nearby."})
+U.StudentsTab:CreateToggle({Name = "Enable Auto Block", CurrentValue = false, Flag = "AB_Enabled", Callback = function(v)
+    U.Config.AutoBlock.enabled = v
+    if v then U.hookAutoBlockFolders(); U.scanAllTeachers() else U.unhookAutoBlockFolders() end
+end})
+U.StudentsTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Flag = "AB_Wall", Callback = function(v) U.Config.AutoBlock.wallCheck = v end})
+U.StudentsTab:CreateSlider({Name = "Block Cooldown", Range = {0.02, 0.3}, Increment = 0.01, Suffix = "s", CurrentValue = 0.08, Flag = "AB_Cooldown", Callback = function(v) U.Config.AutoBlock.cooldown = v end})
+U.StudentsTab:CreateSlider({Name = "Detect Radius", Range = {5, 100}, Increment = 1, Suffix = " studs", CurrentValue = 38, Flag = "AB_Radius", Callback = function(v) U.Config.AutoBlock.radius = v end})
+U.StudentsTab:CreateSlider({Name = "Vertical Radius", Range = {3, 50}, Increment = 1, Suffix = " studs", CurrentValue = 14, Flag = "AB_RadiusY", Callback = function(v) U.Config.AutoBlock.radiusY = v end})
+U.StudentsTab:CreateToggle({Name = "Facing Check", CurrentValue = true, Flag = "AB_Facing", Callback = function(v) U.Config.AutoBlock.checkFacing = v end})
+U.StudentsTab:CreateSlider({Name = "Facing Dot", Range = {-1, 1}, Increment = 0.05, CurrentValue = 0.0, Flag = "AB_FacingDot", Callback = function(v) U.Config.AutoBlock.facingDot = v end})
+U.StudentsTab:CreateSlider({Name = "Charge Delay", Range = {0, 0.4}, Increment = 0.01, Suffix = "s", CurrentValue = 0.05, Flag = "AB_ChargeDelay", Callback = function(v) U.Config.AutoBlock.chargeDelay = v end})
+
+U.StudentsTab:CreateSection("Infinite Stamina")
+U.StudentsTab:CreateParagraph({Title = "Infinite Stamina", Content = "Keeps your stamina full at all times."})
+U.StudentsTab:CreateToggle({Name = "Enable Infinite Stamina", CurrentValue = false, Flag = "IS_Enabled", Callback = function(v)
+    U.Config.InfStamina.enabled = v
+    if v then U.setupStaminaSignal() else U.clearStaminaSignals() end
+end})
+
+U.StudentsTab:CreateSection("Notebook Highlighter")
+U.StudentsTab:CreateParagraph({Title = "Notebook Highlighter", Content = "Highlights the correct answer on notebook questions."})
+U.StudentsTab:CreateToggle({Name = "Enable Notebook Highlighter", CurrentValue = false, Flag = "NB_Enabled", Callback = function(v)
+    U.Config.Notebook.enabled = v
+    if v then U.hookNotebook() else U.unhookNotebook() end
+end})
+
+U.StudentsTab:CreateSection("Anti-Projectile")
+U.StudentsTab:CreateParagraph({Title = "Anti-Projectile", Content = "Automatically dodges incoming projectiles."})
+U.StudentsTab:CreateToggle({Name = "Enabled", CurrentValue = false, Flag = "AP_Enabled", Callback = function(v) U.State.antiProj.enabled = v end})
+U.StudentsTab:CreateToggle({Name = "Auto Dodge", CurrentValue = false, Flag = "AP_AutoDodge", Callback = function(v) U.Config.AntiProj.autoDodge = v end})
+U.StudentsTab:CreateToggle({Name = "Perpendicular Only", CurrentValue = false, Flag = "AP_PerpOnly", Callback = function(v) U.Config.AntiProj.perpendicularOnly = v end})
+U.StudentsTab:CreateSlider({Name = "Dodge Distance", Range = {5, 30}, Increment = 1, Suffix = " studs", CurrentValue = 14, Flag = "AP_DodgeDist", Callback = function(v) U.Config.AntiProj.dodgeDistance = v end})
+U.StudentsTab:CreateSlider({Name = "Dodge Time", Range = {0.3, 3}, Increment = 0.1, Suffix = "s", CurrentValue = 1.2, Flag = "AP_DodgeTime", Callback = function(v) U.Config.AntiProj.dodgeTime = v end})
+U.StudentsTab:CreateSlider({Name = "Hit Radius", Range = {2, 20}, Increment = 1, Suffix = " studs", CurrentValue = 6, Flag = "AP_HitRadius", Callback = function(v) U.Config.AntiProj.hitRadius = v end})
+U.StudentsTab:CreateSlider({Name = "Dodge Cooldown", Range = {0.05, 1}, Increment = 0.05, Suffix = "s", CurrentValue = 0.15, Flag = "AP_Cooldown", Callback = function(v) U.Config.AntiProj.dodgeCooldown = v end})
+
+U.TeachersTab:CreateSection("Bloomie Aim")
+U.TeachersTab:CreateParagraph({Title = "Bloomie Aim", Content = "Aims at the nearest student or Alice while you are aiming."})
+U.TeachersTab:CreateToggle({Name = "Enable Aim", CurrentValue = false, Flag = "AIM_Enabled", Callback = function(v)
+    U.Config.Aim.enabled = v
+    if not v then U.State.aimTarget = nil; U.State.aimTargetPart = nil end
+end})
+U.TeachersTab:CreateToggle({Name = "Only When Aiming", CurrentValue = true, Flag = "AIM_OnlyAim", Callback = function(v) U.Config.Aim.onlyWhenAiming = v end})
+U.TeachersTab:CreateToggle({Name = "Visible Check", CurrentValue = true, Flag = "AIM_Visible", Callback = function(v) U.Config.Aim.visibleCheck = v end})
+U.TeachersTab:CreateToggle({Name = "Prediction", CurrentValue = true, Flag = "AIM_Pred", Callback = function(v) U.Config.Aim.usePrediction = v end})
+U.TeachersTab:CreateToggle({Name = "Lock On Shoot", CurrentValue = true, Flag = "AIM_Lock", Callback = function(v) U.Config.Aim.lockOnShoot = v end})
+U.TeachersTab:CreateSlider({Name = "Max Distance", Range = {50, 3000}, Increment = 50, Suffix = " studs", CurrentValue = 1000, Flag = "AIM_MaxDist", Callback = function(v) U.Config.Aim.maxDistance = v end})
+U.TeachersTab:CreateSlider({Name = "Snap Strength", Range = {0.1, 1}, Increment = 0.05, CurrentValue = 1, Flag = "AIM_Snap", Callback = function(v) U.Config.Aim.snapStrength = v end})
+U.TeachersTab:CreateDropdown({Name = "Aim Part", Options = {"Head", "HumanoidRootPart", "UpperTorso", "Torso"}, CurrentOption = {"Head"}, Flag = "AIM_Part", Callback = function(opt) U.Config.Aim.aimPart = opt[1] end})
+
+U.TeachersTab:CreateSection("Anti Stun")
+U.TeachersTab:CreateParagraph({Title = "Anti Stun", Content = "Removes stun and ragdoll effects."})
+U.TeachersTab:CreateToggle({Name = "Enable Anti Stun", CurrentValue = false, Flag = "AS_Enabled", Callback = function(v) U.Config.AntiStun.enabled = v end})
+
+U.TeachersTab:CreateSection("Thavel Aimbot")
+U.TeachersTab:CreateParagraph({Title = "Thavel Aimbot", Content = "Aim assist for Thavel's pounce with trajectory preview."})
+U.TeachersTab:CreateToggle({Name = "Enabled", CurrentValue = false, Flag = "TA_Enabled", Callback = function(v) 
+    U.State.thavel.enabled = v
+    if v then
+        U.thavelSetup()
+    else
+        U.thavelCleanup()
+        U.thavelUninstallHook()
+    end
+end})
+U.TeachersTab:CreateToggle({Name = "Aimbot", CurrentValue = false, Flag = "TA_Aimbot", Callback = function(v) U.Config.ThavelAimbot.aimbot = v end})
+U.TeachersTab:CreateToggle({Name = "Show Trajectory", CurrentValue = false, Flag = "TA_Trajectory", Callback = function(v) U.Config.ThavelAimbot.showTrajectory = v; if not v then U.thavelClearVisuals() end end})
+U.TeachersTab:CreateToggle({Name = "Show Hitbox Preview", CurrentValue = false, Flag = "TA_Hitbox", Callback = function(v) U.Config.ThavelAimbot.showHitbox = v; if not v then U.thavelClearVisuals() end end})
+U.TeachersTab:CreateToggle({Name = "Auto Aim on Pounce", CurrentValue = false, Flag = "TA_AutoAim", Callback = function(v) U.Config.ThavelAimbot.autoAimOnPounce = v end})
+U.TeachersTab:CreateToggle({Name = "Visible Check", CurrentValue = false, Flag = "TA_Visible", Callback = function(v) U.Config.ThavelAimbot.aimVisibleCheck = v end})
+U.TeachersTab:CreateToggle({Name = "FireServer Hook", CurrentValue = false, Flag = "TA_Hook", Callback = function(v)
+    U.Config.ThavelAimbot.hookEnabled = v
+    if v then U.thavelInstallHook() else U.thavelUninstallHook() end
+end})
+U.TeachersTab:CreateSlider({Name = "Max Distance", Range = {50, 1000}, Increment = 50, Suffix = " studs", CurrentValue = 200, Flag = "TA_MaxDist", Callback = function(v) U.Config.ThavelAimbot.maxDistance = v end})
+U.TeachersTab:CreateSlider({Name = "Smoothness", Range = {0.1, 1}, Increment = 0.05, CurrentValue = 1, Flag = "TA_Smooth", Callback = function(v) U.Config.ThavelAimbot.aimSmoothness = v end})
+
+U.TeachersTab:CreateSection("M1 Aim")
+U.TeachersTab:CreateParagraph({Title = "M1 Aim", Content = "Snaps toward the nearest enemy when you swing. (WORKS ONLY IN THIRD PERSON)"})
+U.TeachersTab:CreateToggle({Name = "Enable M1 Aim", CurrentValue = false, Flag = "M1A_Enabled", Callback = function(v) U.m1AimSetEnabled(v) end})
+U.TeachersTab:CreateToggle({Name = "Wall Check", CurrentValue = true, Flag = "M1A_Wall", Callback = function(v) U.Config.M1Aim.wallCheck = v end})
+U.TeachersTab:CreateToggle({Name = "Instant Snap", CurrentValue = true, Flag = "M1A_Snap", Callback = function(v) U.Config.M1Aim.snap = v end})
+U.TeachersTab:CreateToggle({Name = "Only While Swinging", CurrentValue = true, Flag = "M1A_OnlyM1", Callback = function(v) U.Config.M1Aim.onlyWhileM1 = v end})
+U.TeachersTab:CreateSlider({Name = "Max Distance", Range = {5, 100}, Increment = 1, Suffix = " studs", CurrentValue = 30, Flag = "M1A_MaxDist", Callback = function(v) U.Config.M1Aim.maxDistance = v end})
+U.TeachersTab:CreateDropdown({Name = "Aim Part", Options = {"HumanoidRootPart", "Head", "UpperTorso", "Torso"}, CurrentOption = {"HumanoidRootPart"}, Flag = "M1A_Part", Callback = function(opt) U.Config.M1Aim.aimPart = opt[1] end})
+
+U.HitboxTab:CreateSection("Hitbox")
+U.HitboxTab:CreateParagraph({Title = "Hitbox", Content = "Makes enemy hitboxes larger."})
+U.HitboxTab:CreateToggle({Name = "Enable Hitbox", CurrentValue = false, Flag = "HB_Enabled", Callback = function(v)
+    U.Config.Hitbox.enabled = v
+    if v then U.startHitboxLoop() else U.clearHitboxConns() end
+end})
+U.HitboxTab:CreateSlider({Name = "Hitbox Size", Range = {2, 50}, Increment = 1, Suffix = " studs", CurrentValue = 15, Flag = "HB_Size", Callback = function(v) U.Config.Hitbox.size = v end})
+U.HitboxTab:CreateSlider({Name = "Transparency", Range = {0, 1}, Increment = 0.05, CurrentValue = 0.5, Flag = "HB_Trans", Callback = function(v) U.Config.Hitbox.transparency = v end})
+U.HitboxTab:CreateColorPicker({Name = "Hitbox Color", Color = Color3.fromRGB(255, 0, 0), Flag = "HB_Color", Callback = function(c) U.Config.Hitbox.color = c end})
+U.HitboxTab:CreateToggle({Name = "Team Check", CurrentValue = false, Flag = "HB_Team", Callback = function(v) U.Config.Hitbox.teamCheck = v end})
+U.HitboxTab:CreateToggle({Name = "CanCollide", CurrentValue = false, Flag = "HB_Collide", Callback = function(v) U.Config.Hitbox.canCollide = v end})
+
+U.HitboxTab:CreateSection("Velocity Hitbox")
+U.HitboxTab:CreateParagraph({Title = "Velocity Hitbox", Content = "Dashes you forward when you swing near an enemy. Multiple modes available."})
+U.HitboxTab:CreateToggle({Name = "Enable Velocity Hitbox", CurrentValue = false, Flag = "VH_Enabled", Callback = function(v)
+    U.Config.VelocityHitbox.enabled = v
+    if v then U.vhStart() else U.vhStop() end
+end})
+U.HitboxTab:CreateDropdown({Name = "Mode", Options = {"Forward", "Impulse", "Magnetic"}, CurrentOption = {"Forward"}, Flag = "VH_Mode", Callback = function(opt) U.Config.VelocityHitbox.mode = opt[1] end})
+U.HitboxTab:CreateToggle({Name = "Auto On Swing", CurrentValue = true, Flag = "VH_AutoSwing", Callback = function(v) U.Config.VelocityHitbox.autoOnSwing = v end})
+U.HitboxTab:CreateToggle({Name = "Use LinearVelocity", CurrentValue = true, Flag = "VH_UseLV", Callback = function(v) U.Config.VelocityHitbox.useLinearVelocity = v end})
+U.HitboxTab:CreateToggle({Name = "Hide Self", CurrentValue = true, Flag = "VH_HideSelf", Callback = function(v)
+    U.Config.VelocityHitbox.hideSelf = v
+    if not v then U.vhShowSelf() end
+end})
+U.HitboxTab:CreateSlider({Name = "Range", Range = {5, 100}, Increment = 1, Suffix = " studs", CurrentValue = 30, Flag = "VH_Range", Callback = function(v) U.Config.VelocityHitbox.range = v end})
+U.HitboxTab:CreateSlider({Name = "Speed", Range = {10, 200}, Increment = 5, CurrentValue = 65, Flag = "VH_Speed", Callback = function(v) U.Config.VelocityHitbox.speed = v end})
+U.HitboxTab:CreateSlider({Name = "Duration", Range = {0.05, 0.8}, Increment = 0.01, Suffix = "s", CurrentValue = 0.18, Flag = "VH_Duration", Callback = function(v) U.Config.VelocityHitbox.duration = v end})
+U.HitboxTab:CreateSlider({Name = "Stop Distance", Range = {0, 15}, Increment = 0.5, Suffix = " studs", CurrentValue = 6, Flag = "VH_StopDist", Callback = function(v) U.Config.VelocityHitbox.stopDist = v end})
+U.HitboxTab:CreateSlider({Name = "Max Travel", Range = {3, 80}, Increment = 1, Suffix = " studs", CurrentValue = 25, Flag = "VH_MaxTravel", Callback = function(v) U.Config.VelocityHitbox.maxTravel = v end})
+U.HitboxTab:CreateSlider({Name = "Shake", Range = {0, 40}, Increment = 1, CurrentValue = 6, Flag = "VH_Shake", Callback = function(v) U.Config.VelocityHitbox.shake = v end})
+U.HitboxTab:CreateSlider({Name = "FOV", Range = {30, 360}, Increment = 10, Suffix = "°", CurrentValue = 160, Flag = "VH_FOV", Callback = function(v) U.Config.VelocityHitbox.fov = v end})
+U.HitboxTab:CreateSlider({Name = "Cooldown", Range = {0.05, 2}, Increment = 0.05, Suffix = "s", CurrentValue = 0.55, Flag = "VH_Cooldown", Callback = function(v) U.Config.VelocityHitbox.cooldown = v end})
+
+U.AnimationsTab:CreateSection("Animation Player")
+U.AnimationsTab:CreateParagraph({Title = "Animation Player", Content = "Plays a custom animation on your character."})
+U.AnimationsTab:CreateInput({Name = "Animation ID", CurrentValue = "", PlaceholderText = "Enter animation ID or rbxassetid", RemoveTextAfterFocusLost = false, Flag = "ANIM_Id", Callback = function(v)
+    U.animIdValue = v
+    if v ~= nil and v ~= "" then U.Config.Animations.currentId = v end
+end})
+U.AnimationsTab:CreateKeybind({Name = "Hotkey", CurrentKeybind = "G", HoldToInteract = false, Flag = "ANIM_Keybind", Callback = function(key)
+    if typeof(key) == "string" then
+        local ok, code = pcall(function() return Enum.KeyCode[key] end)
+        if ok and code then U.Config.Animations.keybind = code end
+    else
+        U.Config.Animations.keybind = key
+    end
+end})
+U.AnimationsTab:CreateToggle({Name = "Loop Animation", CurrentValue = false, Flag = "ANIM_Loop", Callback = function(v) U.Config.Animations.loop = v end})
+U.AnimationsTab:CreateSlider({Name = "Playback Speed", Range = {0.1, 3}, Increment = 0.1, Suffix = "x", CurrentValue = 1, Flag = "ANIM_Speed", Callback = function(v) U.Config.Animations.speed = v end})
+U.AnimationsTab:CreateButton({Name = "Play Now", Callback = function()
+    local id = U.animIdValue
+    if id == nil or id == "" then id = U.Config.Animations.currentId end
+    if id ~= nil and id ~= "" then
+        U.Config.Animations.currentId = id
+        U.playAnimation(id, U.Config.Animations.loop, U.Config.Animations.speed)
+    end
+end})
+U.AnimationsTab:CreateButton({Name = "Stop Animation", Callback = function() U.stopAnimation() end})
+
+U.OtherTab:CreateSection("Teleportation")
+U.OtherTab:CreateParagraph({Title = "Teleportation", Content = "Quick shortcuts to common locations."})
+U.OtherTab:CreateButton({Name = "Teleport to Grace Room", Callback = function()
+    local m = workspace:FindFirstChild("Area")
+    local mm = m and m:FindFirstChild("Map")
+    local sp = mm and mm:FindFirstChild("Special")
+    local grace = sp and sp:FindFirstChild("Grace")
+    local head = grace and grace:FindFirstChild("Head")
+    if head then U.teleportTo(head.Position + Vector3.new(0, 3, 0)) end
+end})
+U.OtherTab:CreateButton({Name = "Teleport to SafeZone", Callback = function() U.teleportTo(Vector3.new(-198, 104, -103)) end})
+U.OtherTab:CreateButton({Name = "Teleport to Alice Room", Callback = function()
+    local m = workspace:FindFirstChild("Area")
+    local mm = m and m:FindFirstChild("Map")
+    local dec = mm and mm:FindFirstChild("Decoration")
+    local alice = dec and dec:FindFirstChild("AliceRoom")
+    local diary = alice and alice:FindFirstChild("Alice_Diary")
+    local pages = diary and diary:FindFirstChild("Pages")
+    if pages then U.teleportTo(pages.Position + Vector3.new(0, 3, 0)) end
+end})
+U.OtherTab:CreateButton({Name = "Teleport to Detention Room", Callback = function() U.teleportTo(Vector3.new(-160, 118, 317)) end})
+
+U.OtherTab:CreateSection("Door Noclip")
+U.OtherTab:CreateParagraph({Title = "Door Noclip", Content = "Walk through doors."})
+U.OtherTab:CreateToggle({Name = "Enable Door Noclip", CurrentValue = false, Flag = "DN_Enabled", Callback = function(v) U.Config.DoorNoclip.enabled = v; U.applyDoorNoclip() end})
+U.OtherTab:CreateSlider({Name = "Rescan Interval", Range = {1, 10}, Increment = 0.5, Suffix = "s", CurrentValue = 3, Flag = "DN_Rescan", Callback = function(v) U.Config.DoorNoclip.rescanInterval = v end})
+
+U.OtherTab:CreateSection("Alice Barrier Noclip")
+U.OtherTab:CreateParagraph({Title = "Alice Barrier Noclip", Content = "Pass through Alice's barriers."})
+U.OtherTab:CreateToggle({Name = "Enable Alice Barrier Noclip", CurrentValue = false, Flag = "ABN_Enabled", Callback = function(v) U.Config.AliceBarrierNoclip.enabled = v; U.applyAliceBarrierNoclip() end})
+
+U.OtherTab:CreateSection("Panic Leave")
+U.OtherTab:CreateParagraph({Title = "Panic Leave", Content = "Leaves the game when a configured staff member joins."})
+U.OtherTab:CreateToggle({Name = "Enable Panic Leave", CurrentValue = false, Flag = "PANIC_Enabled", Callback = function(v) U.Config.Panic.enabled = v end})
+
+U.OtherTab:CreateSection("Player Info")
+U.OtherTab:CreateParagraph({Title = U.LP.DisplayName, Content = "@" .. U.LP.Name .. " | ID: " .. tostring(U.LP.UserId)})
+
+for _, plr in ipairs(U.Players:GetPlayers()) do U.checkPanicLeave(plr) end
+U.Players.PlayerAdded:Connect(function(p) U.checkPanicLeave(p); task.wait(0.1); U.scanAllTeachers() end)
+U.Players.PlayerRemoving:Connect(function(p)
+    local d = U.State.espData[p]
+    if d then U.destroyESP(d); U.State.espData[p] = nil end
+    U.State.devCache[p] = nil
+    U.State.panicCache[p] = nil
+    U.State.aimVelocityCache[p] = nil
+end)
+
+U.LP.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    U.cleanupESP()
+    U.stopAnimation()
+    if U.Config.SmartSpeed.enabled then
+        U.State.smartSpeed.currentSpeed = 16
+        U.State.smartSpeed.targetSpeed = 16
+    end
+    if U.Config.ThirdPerson.enabled then U.applyThirdPerson() end
+    if U.Config.FOV.enabled then U.applyFOV() end
+    if U.Config.InfStamina.enabled then U.setupStaminaSignal() end
+    U.vhRemoveLunge()
+    U.vhShowSelf()
+    U.vh.running = false
+end)
+
+U.UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == U.Config.Animations.keybind then U.toggleAnimationHotkey() end
+end)
+
+U.UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if not U.Config.Aim.lockOnShoot then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not U.Config.Aim.enabled then return end
+    local char = U.getChar()
+    if not char then return end
+    if U.Config.Aim.onlyWhenAiming and char:GetAttribute("Aiming") ~= true then return end
+    local target = U.State.aimTarget or U.findBloomieAimTarget()
+    if not target then return end
+    local part = U.getAimPartModel(target, U.Config.Aim.aimPart)
+    if not part then return end
+    local camera = U.getCamera()
+    camera.CFrame = CFrame.new(camera.CFrame.Position, U.predictPosition(part))
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if U.Config.Notebook.enabled then
+            local mf = U.findNotebookMainFrame()
+            if mf then
+                local hasConn = false
+                if U.State.notebookHooked then pcall(function() hasConn = U.State.notebookHooked.Connected end) end
+                if not hasConn then U.hookNotebook() end
+            else
+                U.unhookNotebook()
+            end
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if U.Config.NoCircleEnrage.enabled then pcall(U.applyNoCircleEnrage) end
+    end
+end)
+
+U.RunService.Heartbeat:Connect(function(dt)
+    local now = os.clock()
+    
+    if U.Config.ESP.enabled then
+        if now - U.State.espScan >= 0.5 then
+            U.State.espScan = now
+            U.scanPlayers()
+            U.scanNPCs()
+        end
+        if now - U.State.espUpdate >= U.Config.ESP.updateInterval then
+            U.State.espUpdate = now
+            for plr, data in pairs(U.State.espData) do U.updateESPData(data, plr) end
+        end
+    end
+    
+    if U.Config.SmartSpeed.enabled then
+        if U.detectRevert() then
+            U.State.smartSpeed.targetSpeed = U.State.smartSpeed.lastBase
+            U.State.smartSpeed.currentSpeed = U.State.smartSpeed.lastBase
+        else
+            U.State.smartSpeed.targetSpeed = U.computeTargetSpeed()
+        end
+        local diff = U.State.smartSpeed.targetSpeed - U.State.smartSpeed.currentSpeed
+        if math.abs(diff) < 0.5 then 
+            U.State.smartSpeed.currentSpeed = U.State.smartSpeed.targetSpeed
+        else
+            local step = U.Config.SmartSpeed.smoothStep * dt * 10
+            if diff > 0 then 
+                U.State.smartSpeed.currentSpeed = math.min(U.State.smartSpeed.currentSpeed + step, U.State.smartSpeed.targetSpeed)
+            else 
+                U.State.smartSpeed.currentSpeed = math.max(U.State.smartSpeed.currentSpeed - step, U.State.smartSpeed.targetSpeed) 
+            end
+        end
+        
+        if now - U.State.smartSpeedTick >= 0.05 then
+            U.State.smartSpeedTick = now
+            local hum = U.getHum()
+            if hum then
+                local base = U.getBaseSpeed()
+                if U.State.smartSpeed.currentSpeed > base + 0.5 then
+                    if hum.WalkSpeed ~= U.State.smartSpeed.currentSpeed then hum.WalkSpeed = U.State.smartSpeed.currentSpeed end
+                else
+                    if hum.WalkSpeed ~= base then hum.WalkSpeed = base end
+                end
+            end
+        end
+    end
+    
+    -- 优化：防眩晕逻辑降频到 10Hz 执行，不再每帧强行覆盖属性
+    if U.Config.AntiStun.enabled then
+        if now - (U.State.lastAntiStun or 0) > 0.1 then
+            U.State.lastAntiStun = now
+            U.clearStunAttrs(); U.clearMoveLocks(); U.clearHumanoidStates(); U.forceWalkSpeed()
+        end
+    end
+    
+    if U.Config.DoorNoclip.enabled then
+        if now - U.State.doorNoclip.lastScan >= U.Config.DoorNoclip.rescanInterval then
+            U.State.doorNoclip.lastScan = now
+            U.scanAllDoors()
+        end
+    end
+end)
+
+U.RunService.RenderStepped:Connect(function()
+    if not U.Config.Aim.enabled then return end
+    local char = U.getChar()
+    if not char then U.State.aimTarget = nil; U.State.aimTargetPart = nil; return end
+    
+    if U.Config.Aim.onlyWhenAiming and char:GetAttribute("Aiming") ~= true then 
+        U.State.aimTarget = nil; U.State.aimTargetPart = nil; return 
+    end
+    
+    -- 优化：使用视野(FOV)和距离进行粗筛，降低每秒全量遍历的频率
+    local target = U.State.aimTarget
+    if not target or not target.Parent or not U.isVisible(U.State.aimTargetPart) then
+        target = U.findBloomieAimTarget()
+        U.State.aimTarget = target
+    end
+
+    if target then
+        local part = U.getAimPartModel(target, U.Config.Aim.aimPart)
+        U.State.aimTargetPart = part
+        if part then
+            local camera = U.getCamera()
+            local targetPos = U.predictPosition(part)
+            local currentPos = camera.CFrame.Position
+            if U.Config.Aim.snapStrength >= 1 then
+                camera.CFrame = CFrame.new(currentPos, targetPos)
+            else
+                local newLook = camera.CFrame.LookVector:Lerp((targetPos - currentPos).Unit, U.Config.Aim.snapStrength)
+                camera.CFrame = CFrame.new(currentPos, currentPos + newLook)
+            end
+        end
+    else
+        U.State.aimTargetPart = nil
+    end
+end)
+
+U.Rayfield:LoadConfiguration()
+
+if U.ValidateConfig then U.ValidateConfig() end
+
+getgenv().UltimatumHubUnload = function()
+    if U.Unloaders then
+        for _, fn in pairs(U.Unloaders) do pcall(fn) end
+    end
+end
